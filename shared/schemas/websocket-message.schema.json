@@ -1,0 +1,279 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebSocketMessage",
+  "description": "WebSocket message envelope for client-server communication",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "command",
+        "state",
+        "error",
+        "ping",
+        "pong",
+        "join_game",
+        "leave_game",
+        "player_joined",
+        "player_left",
+        "game_started",
+        "game_ended",
+        "turn_changed",
+        "tile_placed",
+        "unit_created",
+        "unit_moved",
+        "unit_attacked",
+        "resource_updated"
+      ],
+      "description": "Type of message"
+    },
+    "payload": {
+      "type": ["object", "string", "number", "boolean", "null"],
+      "description": "Message payload, structure depends on message type"
+    },
+    "timestamp": {
+      "type": "number",
+      "description": "Unix timestamp when message was created"
+    },
+    "messageId": {
+      "type": "string",
+      "description": "Unique identifier for this message"
+    },
+    "playerId": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "ID of the player who sent the message, null for server messages"
+    },
+    "gameId": {
+      "type": ["string", "null"],
+      "description": "ID of the game this message relates to, null for lobby messages"
+    },
+    "sequenceNumber": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Sequence number for ordering messages"
+    },
+    "replyTo": {
+      "type": ["string", "null"],
+      "description": "Message ID this is a reply to, null if not a reply"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "normal", "high", "critical"],
+      "default": "normal",
+      "description": "Message priority for processing order"
+    },
+    "requiresAck": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this message requires acknowledgment"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["client", "server"],
+          "description": "Source of the message"
+        },
+        "version": {
+          "type": "string",
+          "description": "Protocol version"
+        },
+        "retryCount": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Number of retry attempts"
+        },
+        "maxRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3,
+          "description": "Maximum number of retry attempts"
+        },
+        "ttl": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Time to live in seconds"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Message metadata"
+    }
+  },
+  "required": ["type", "payload", "timestamp", "messageId"],
+  "additionalProperties": false,
+  "definitions": {
+    "CommandPayload": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "place_tile",
+            "place_worker",
+            "create_unit",
+            "move_unit",
+            "attack_unit",
+            "attack_tile",
+            "end_turn",
+            "pause_game",
+            "resume_game",
+            "surrender"
+          ],
+          "description": "Command action to perform"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Action-specific parameters"
+        }
+      },
+      "required": ["action", "parameters"],
+      "additionalProperties": false
+    },
+    "StatePayload": {
+      "type": "object",
+      "properties": {
+        "gameState": {
+          "type": "object",
+          "description": "Complete game state"
+        },
+        "delta": {
+          "type": "object",
+          "description": "Only the changes since last state update"
+        },
+        "fullState": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this is a complete state or delta"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ErrorPayload": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message"
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional error details"
+        },
+        "retryable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the action can be retried"
+        }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    },
+    "JoinGamePayload": {
+      "type": "object",
+      "properties": {
+        "playerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "description": "Player's display name"
+        },
+        "gameId": {
+          "type": ["string", "null"],
+          "description": "Game ID to join, null to create new game"
+        },
+        "spectator": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to join as spectator"
+        }
+      },
+      "required": ["playerName"],
+      "additionalProperties": false
+    },
+    "PlaceTilePayload": {
+      "type": "object",
+      "properties": {
+        "tileType": {
+          "type": "string",
+          "enum": [
+            "capital_city",
+            "city",
+            "field",
+            "monastery",
+            "marsh",
+            "mine",
+            "orchard",
+            "barracks",
+            "watchtower"
+          ],
+          "description": "Type of tile to place"
+        },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            }
+          },
+          "required": ["x", "y"],
+          "additionalProperties": false,
+          "description": "Position to place the tile"
+        },
+        "rotation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "Rotation of the tile (0-3, 90-degree increments)"
+        }
+      },
+      "required": ["tileType", "position"],
+      "additionalProperties": false
+    },
+    "UnitActionPayload": {
+      "type": "object",
+      "properties": {
+        "unitId": {
+          "type": "string",
+          "description": "ID of the unit performing the action"
+        },
+        "targetPosition": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            }
+          },
+          "required": ["x", "y"],
+          "additionalProperties": false
+        },
+        "targetId": {
+          "type": ["string", "null"],
+          "description": "ID of target unit or tile, null for movement"
+        }
+      },
+      "required": ["unitId", "targetPosition"],
+      "additionalProperties": false
+    }
+  }
+} 

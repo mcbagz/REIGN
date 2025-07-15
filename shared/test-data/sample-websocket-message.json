@@ -1,0 +1,26 @@
+{
+  "type": "command",
+  "payload": {
+    "action": "place_tile",
+    "parameters": {
+      "tileType": "city",
+      "position": { "x": 10, "y": 15 },
+      "rotation": 0
+    }
+  },
+  "timestamp": 1640995200.0,
+  "messageId": "msg_123",
+  "playerId": 1,
+  "gameId": "game_456",
+  "sequenceNumber": 42,
+  "replyTo": null,
+  "priority": "normal",
+  "requiresAck": true,
+  "metadata": {
+    "source": "client",
+    "version": "1.0",
+    "retryCount": 0,
+    "maxRetries": 3,
+    "ttl": 30.0
+  }
+} 

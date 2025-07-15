@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carcassonne: War of Ages</title>
+    <link rel="stylesheet" href="src/css/styles.css">
+    <link rel="stylesheet" href="src/css/game.css">
+    <link rel="stylesheet" href="src/css/ui.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Game Loading Screen -->
+        <div id="loading-screen" class="screen">
+            <div class="loading-content">
+                <h1>Carcassonne: War of Ages</h1>
+                <div class="loading-spinner"></div>
+                <p>Loading game assets...</p>
+            </div>
+        </div>
+
+        <!-- Main Menu -->
+        <div id="main-menu" class="screen hidden">
+            <div class="menu-content">
+                <h1>Carcassonne: War of Ages</h1>
+                <div class="menu-buttons">
+                    <button id="single-player-btn" class="menu-btn">Single Player</button>
+                    <button id="multiplayer-btn" class="menu-btn">Multiplayer</button>
+                    <button id="settings-btn" class="menu-btn">Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen hidden">
+            <!-- Game UI -->
+            <div id="game-ui">
+                <!-- Resource Bar -->
+                <div id="resource-bar">
+                    <div class="resource-item">
+                        <span class="resource-icon gold"></span>
+                        <span id="gold-count" class="resource-count">100</span>
+                    </div>
+                    <div class="resource-item">
+                        <span class="resource-icon food"></span>
+                        <span id="food-count" class="resource-count">100</span>
+                    </div>
+                    <div class="resource-item">
+                        <span class="resource-icon faith"></span>
+                        <span id="faith-count" class="resource-count">0</span>
+                    </div>
+                </div>
+
+                <!-- Player Info -->
+                <div id="player-info">
+                    <div class="player-status">
+                        <span class="player-name">Player 1</span>
+                        <span class="player-level">Manor</span>
+                    </div>
+                </div>
+
+                <!-- Game Controls -->
+                <div id="game-controls">
+                    <button id="tech-tree-btn" class="control-btn">Tech Tree</button>
+                    <button id="settings-game-btn" class="control-btn">Settings</button>
+                </div>
+                
+                <!-- Tile Bank -->
+                <div id="tile-bank">
+                    <div class="tile-bank-header">
+                        <h4>Tile Bank</h4>
+                        <span id="tile-bank-count">0/3</span>
+                    </div>
+                    <div id="tile-bank-tiles">
+                        <!-- Tiles will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Canvas Container -->
+            <div id="game-canvas-container">
+                <!-- PixiJS canvas will be inserted here -->
+            </div>
+
+            <!-- Tile Selection Modal -->
+            <div id="tile-selection-modal" class="modal hidden">
+                <div class="modal-content">
+                    <h3>Choose a Tile</h3>
+                    <div id="tile-options">
+                        <!-- Tile options will be populated by JavaScript -->
+                    </div>
+                    <div class="modal-timer">
+                        <span id="selection-timer">15</span>s
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tech Tree Modal -->
+            <div id="tech-tree-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Tech Tree</h3>
+                        <button class="close-btn">&times;</button>
+                    </div>
+                    <div class="tech-tree-content">
+                        <!-- Tech tree will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load PIXI and pixi-viewport properly -->
+    <script>
+        window.pixiViewportLoaded = false;
+        
+        function loadPixi() {
+            return new Promise((resolve, reject) => {
+                const pixiScript = document.createElement('script');
+                pixiScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js';
+                pixiScript.onload = () => {
+                     
+                     // Ensure PIXI is available globally in the format expected by pixi-viewport UMD
+                     window.PIXI = PIXI;
+                     window.pixi_js = PIXI;  // pixi-viewport UMD expects this global variable name
+                     
+                     // Wait a moment to ensure PIXI is fully initialized
+                     setTimeout(() => {
+                         if (PIXI && PIXI.Point) {
+                             console.log('PIXI.Point is available, PIXI fully loaded');
+                             resolve();
+                         } else {
+                             reject(new Error('PIXI.Point not available'));
+                         }
+                     }, 100);
+                };
+                pixiScript.onerror = (error) => {
+                    console.error('Failed to load PIXI.js:', error);
+                    reject(error);
+                };
+                document.head.appendChild(pixiScript);
+            });
+        }
+        
+        function loadPixiViewport() {
+            return new Promise((resolve, reject) => {
+                // Double-check that PIXI is available
+                if (!window.PIXI || !window.PIXI.Point) {
+                    reject(new Error('PIXI not properly loaded'));
+                    return;
+                }
+                
+                console.log('Loading pixi-viewport with PIXI version:', PIXI.VERSION);
+                
+                const script = document.createElement('script');
+                script.src = 'node_modules/pixi-viewport/dist/pixi_viewport.umd.cjs';
+                script.onload = () => {
+                    console.log('pixi-viewport loaded successfully');
+                    window.pixiViewportLoaded = true;
+                    resolve();
+                };
+                script.onerror = (error) => {
+                    console.error('Failed to load pixi-viewport:', error);
+                    reject(error);
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        // Load PIXI first, then pixi-viewport
+        loadPixi()
+            .then(() => loadPixiViewport())
+            .catch(console.error);
+    </script>
+    
+    <!-- Game Scripts -->
+    <script src="src/js/config.js"></script>
+    <script src="src/js/utils.js"></script>
+    <script src="src/js/tile-system.js"></script>
+    <script src="src/js/resource-manager.js"></script>
+    <script src="src/js/unit-system.js"></script>
+    <script src="src/js/game-state.js"></script>
+    <script src="src/js/renderer.js"></script>
+    <script src="src/js/ui-manager.js"></script>
+    <script src="src/js/websocket-client.js"></script>
+    <script src="src/js/game.js"></script>
+    <script src="src/js/main.js"></script>
+</body>
+</html> 

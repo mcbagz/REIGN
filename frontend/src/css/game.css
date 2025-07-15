@@ -1,0 +1,527 @@
+/* Game screen styles */
+#game-screen {
+    background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 0;
+}
+
+/* Game canvas container */
+#game-canvas-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: #1a252f;
+    border: 2px solid #34495e;
+    border-radius: 8px;
+    margin: 1rem;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+}
+
+#game-canvas-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+}
+
+/* Game tile styles */
+.tile {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tile.highlight {
+    border-color: #f39c12;
+    box-shadow: 0 0 10px rgba(243, 156, 18, 0.6);
+    z-index: 10;
+}
+
+.tile.invalid {
+    border-color: #e74c3c;
+    box-shadow: 0 0 10px rgba(231, 76, 60, 0.6);
+}
+
+.tile.valid-placement {
+    border-color: #27ae60;
+    box-shadow: 0 0 10px rgba(39, 174, 96, 0.6);
+    background: rgba(39, 174, 96, 0.1);
+}
+
+/* Unit styles */
+.unit {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    z-index: 5;
+}
+
+.unit.selected {
+    border-color: #f39c12;
+    box-shadow: 0 0 10px rgba(243, 156, 18, 0.8);
+}
+
+.unit.infantry {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+}
+
+.unit.archer {
+    background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+}
+
+.unit.knight {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+}
+
+.unit.siege {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+}
+
+/* Worker/Follower styles */
+.worker {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid #ffffff;
+    z-index: 3;
+}
+
+.worker.magistrate {
+    background: #f39c12;
+}
+
+.worker.farmer {
+    background: #27ae60;
+}
+
+.worker.monk {
+    background: #9b59b6;
+}
+
+.worker.scout {
+    background: #34495e;
+}
+
+/* Tile selection modal */
+#tile-selection-modal .modal-content {
+    min-width: 500px;
+    max-width: 600px;
+}
+
+#tile-options {
+    display: flex;
+    gap: 1rem;
+    margin: 1rem 0;
+    justify-content: center;
+}
+
+.tile-option {
+    width: 120px;
+    border: 2px solid #7f8c8d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: #2c3e50;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.tile-option:hover {
+    border-color: #f39c12;
+    background: #34495e;
+    transform: scale(1.05);
+}
+
+.tile-option.selected {
+    border-color: #27ae60;
+    background: #2ecc71;
+    color: white;
+}
+
+.tile-preview {
+    width: 100%;
+    height: 80px;
+    border-radius: 6px 6px 0 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    color: white;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+}
+
+.tile-symbol {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.tile-type {
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.tile-info {
+    padding: 0.5rem;
+    background: rgba(52, 73, 94, 0.9);
+    border-radius: 0 0 6px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.tile-resources {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.resource {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-weight: bold;
+    color: white;
+    text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+}
+
+.resource.gold {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+}
+
+.resource.food {
+    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+}
+
+.resource.faith {
+    background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%);
+}
+
+.tile-hp {
+    font-size: 0.7rem;
+    color: #bdc3c7;
+    text-align: center;
+    font-weight: bold;
+}
+
+.modal-timer {
+    margin-top: 1rem;
+    font-size: 1.2rem;
+    color: #f39c12;
+    text-align: center;
+}
+
+#selection-timer {
+    font-weight: bold;
+    font-size: 1.5rem;
+    color: #e74c3c;
+}
+
+/* Add pulsing animation for timer when low */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+#selection-timer[data-time-left="5"],
+#selection-timer[data-time-left="4"],
+#selection-timer[data-time-left="3"],
+#selection-timer[data-time-left="2"],
+#selection-timer[data-time-left="1"] {
+    animation: pulse 1s infinite;
+    color: #e74c3c;
+}
+
+/* Tile Bank UI */
+#tile-bank {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(44, 62, 80, 0.95);
+    border: 2px solid #34495e;
+    border-radius: 8px;
+    padding: 1rem;
+    min-width: 200px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 150;
+}
+
+.tile-bank-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #34495e;
+}
+
+.tile-bank-header h4 {
+    margin: 0;
+    color: #ecf0f1;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+#tile-bank-count {
+    color: #95a5a6;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+#tile-bank-tiles {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.bank-tile {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(52, 73, 94, 0.8);
+    border: 1px solid #34495e;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.bank-tile:hover {
+    background: rgba(52, 73, 94, 1);
+    border-color: #f39c12;
+    transform: translateY(-2px);
+}
+
+.bank-tile.selected {
+    border-color: #27ae60;
+    background: rgba(39, 174, 96, 0.2);
+}
+
+.bank-tile.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
+}
+
+.bank-tile-preview {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.2rem;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+    flex-shrink: 0;
+}
+
+.bank-tile-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.bank-tile-type {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #ecf0f1;
+    text-transform: capitalize;
+}
+
+.bank-tile-resources {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.bank-tile-resource {
+    font-size: 0.6rem;
+    padding: 0.1rem 0.25rem;
+    border-radius: 2px;
+    font-weight: bold;
+    color: white;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.bank-tile-resource.gold {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+}
+
+.bank-tile-resource.food {
+    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+}
+
+.bank-tile-resource.faith {
+    background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%);
+}
+
+.bank-tile-hp {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    font-size: 0.6rem;
+    color: #95a5a6;
+    font-weight: 500;
+}
+
+/* Empty bank state */
+.tile-bank-empty {
+    text-align: center;
+    color: #95a5a6;
+    font-size: 0.8rem;
+    padding: 1rem;
+    font-style: italic;
+}
+
+/* Drag and drop feedback */
+.drag-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.drag-preview {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1001;
+    opacity: 0.8;
+    transform: scale(0.8);
+}
+
+/* Grid overlay */
+.grid-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0.1;
+    background-image: 
+        linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px);
+    background-size: 32px 32px;
+}
+
+/* Animation classes */
+.fade-in-tile {
+    animation: fadeInTile 0.5s ease-in-out;
+}
+
+@keyframes fadeInTile {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.slide-in-unit {
+    animation: slideInUnit 0.3s ease-out;
+}
+
+@keyframes slideInUnit {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Combat effects */
+.combat-indicator {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: #e74c3c;
+    border-radius: 50%;
+    z-index: 15;
+    animation: combatFlash 0.5s ease-in-out;
+}
+
+@keyframes combatFlash {
+    0%, 100% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
+/* Damage numbers */
+.damage-number {
+    position: absolute;
+    font-size: 14px;
+    font-weight: bold;
+    color: #e74c3c;
+    z-index: 20;
+    animation: damageFloat 1s ease-out forwards;
+    pointer-events: none;
+}
+
+@keyframes damageFloat {
+    0% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+}
+
+/* Minimap */
+.minimap {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    width: 150px;
+    height: 150px;
+    background: rgba(44, 62, 80, 0.9);
+    border: 2px solid #34495e;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 100;
+}
+
+.minimap-viewport {
+    position: absolute;
+    border: 2px solid #f39c12;
+    background: rgba(243, 156, 18, 0.2);
+    pointer-events: none;
+} 

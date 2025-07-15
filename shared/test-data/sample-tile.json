@@ -1,0 +1,27 @@
+{
+  "id": "10,15",
+  "type": "city",
+  "x": 10,
+  "y": 15,
+  "edges": ["city", "field", "city", "field"],
+  "hp": 100,
+  "maxHp": 100,
+  "owner": 1,
+  "worker": {
+    "id": 1,
+    "type": "magistrate",
+    "owner": 1
+  },
+  "resources": {
+    "gold": 2,
+    "food": 0,
+    "faith": 0
+  },
+  "placedAt": 1640995200.0,
+  "metadata": {
+    "canTrain": true,
+    "workerCapacity": 1,
+    "defenseBonus": 0.2,
+    "speedMultiplier": 1.0
+  }
+} 

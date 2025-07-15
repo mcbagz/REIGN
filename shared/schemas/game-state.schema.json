@@ -1,0 +1,290 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GameState",
+  "description": "Complete game state for Carcassonne: War of Ages",
+  "type": "object",
+  "properties": {
+    "gameId": {
+      "type": "string",
+      "description": "Unique identifier for the game session"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "starting",
+        "playing",
+        "paused",
+        "finished"
+      ],
+      "description": "Current game status"
+    },
+    "currentPlayer": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "ID of the player whose turn it is"
+    },
+    "turnNumber": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current turn number"
+    },
+    "turnTimeRemaining": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Time remaining for current turn in seconds"
+    },
+    "gameStartTime": {
+      "type": "number",
+      "description": "Timestamp when game started"
+    },
+    "lastUpdate": {
+      "type": "number",
+      "description": "Timestamp of last state update"
+    },
+    "players": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Player ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Player name"
+          },
+          "color": {
+            "type": "string",
+            "description": "Player color (hex code)"
+          },
+          "isConnected": {
+            "type": "boolean",
+            "description": "Whether player is currently connected"
+          },
+          "isEliminated": {
+            "type": "boolean",
+            "description": "Whether player has been eliminated"
+          },
+          "resources": {
+            "type": "object",
+            "properties": {
+              "gold": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "food": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "faith": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["gold", "food", "faith"],
+            "additionalProperties": false,
+            "description": "Current resources"
+          },
+          "techLevel": {
+            "type": "string",
+            "enum": ["manor", "duchy", "kingdom"],
+            "description": "Current technology level"
+          },
+          "capitalCity": {
+            "type": ["object", "null"],
+            "properties": {
+              "x": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 39
+              },
+              "y": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 39
+              }
+            },
+            "required": ["x", "y"],
+            "additionalProperties": false,
+            "description": "Position of capital city, null if eliminated"
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "tilesPlaced": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unitsCreated": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unitsKilled": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "tilesDestroyed": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "description": "Player statistics"
+          }
+        },
+        "required": ["id", "name", "color", "isConnected", "isEliminated", "resources", "techLevel", "capitalCity"],
+        "additionalProperties": false
+      },
+      "minItems": 2,
+      "maxItems": 4,
+      "description": "Array of players in the game"
+    },
+    "tiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A tile on the board"
+      },
+      "description": "Array of all tiles placed on the board"
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A unit on the board"
+      },
+      "description": "Array of all units on the board"
+    },
+    "availableTiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "capital_city",
+              "city",
+              "field",
+              "monastery",
+              "marsh",
+              "mine",
+              "orchard",
+              "barracks",
+              "watchtower"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["type", "count"],
+        "additionalProperties": false
+      },
+      "description": "Remaining tiles in the deck"
+    },
+    "currentTileOptions": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "string",
+        "enum": [
+          "capital_city",
+          "city",
+          "field",
+          "monastery",
+          "marsh",
+          "mine",
+          "orchard",
+          "barracks",
+          "watchtower"
+        ]
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Three tile options for current player, null if not current player's turn"
+    },
+    "winner": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "ID of winning player, null if game not finished"
+    },
+    "gameSettings": {
+      "type": "object",
+      "properties": {
+        "turnDuration": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Turn duration in seconds"
+        },
+        "maxGameDuration": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Maximum game duration in seconds"
+        },
+        "mapSize": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 100,
+          "description": "Size of the square map"
+        },
+        "resourceUpdateInterval": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "How often resources are updated in seconds"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Game configuration settings"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique event identifier"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "tile_placed",
+              "unit_created",
+              "unit_moved",
+              "unit_attacked",
+              "unit_killed",
+              "tile_destroyed",
+              "player_eliminated",
+              "game_started",
+              "game_ended",
+              "turn_changed"
+            ],
+            "description": "Type of event"
+          },
+          "playerId": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "ID of player who triggered the event"
+          },
+          "timestamp": {
+            "type": "number",
+            "description": "When the event occurred"
+          },
+          "data": {
+            "type": "object",
+            "description": "Event-specific data"
+          }
+        },
+        "required": ["id", "type", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "description": "Recent game events for replay/logging"
+    }
+  },
+  "required": ["gameId", "status", "currentPlayer", "turnNumber", "turnTimeRemaining", "gameStartTime", "lastUpdate", "players", "tiles", "units", "availableTiles"],
+  "additionalProperties": false
+} 

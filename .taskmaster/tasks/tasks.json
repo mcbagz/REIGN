@@ -1,0 +1,176 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Initialize Repository & Project Infrastructure",
+        "description": "Create monorepo with PixiJS front-end and FastAPI back-end, configure build, linting, CI, and hosting scaffolding.",
+        "details": "• GitHub repo → main branch protected, develop branch for daily work.\n• Monorepo layout:\n  /frontend (Vite + PixiJS v7, TS, ESLint, Prettier)\n  /backend (Python 3.12, FastAPI, uvicorn, poetry)\n  /shared (JSON schemas for tiles/units)\n• Add GitHub Actions:\n  ‑ Frontend: npm ci → npm run build → upload artifact\n  ‑ Backend: poetry install → pytest → uvicorn dry-run\n• Netlify & Render free tiers for preview deploys.\n• .env.sample with WS_URL, API_URL.\n",
+        "testStrategy": "Run CI pipeline on PR creation; verify successful build & test stages. Open preview URLs, confirm 200 OK for index.html and /docs (FastAPI swagger).",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Define Core Data Schemas & API Contracts",
+        "description": "All core data contracts are now formalized and validated. JSON Schemas, mirrored Pydantic models, and auto-generated TypeScript types provide a single-source-of-truth for tiles, units, full game state, and WebSocket messaging envelopes.",
+        "status": "done",
+        "dependencies": [],
+        "priority": "medium",
+        "details": "✅ JSON Schemas (shared/schemas)\n  • tile.schema.json – tile structure with worker slot, resource bundle, owner, HP, edge meta, etc.\n  • unit.schema.json – full combat stats, targeting, type effectiveness, status flags\n  • game-state.schema.json – authoritative game snapshot: players, tiles, units, settings, metadata\n  • websocket-message.schema.json – {type:\"cmd|state|error\", version, ts, payload, ack?, retry?}\n\n✅ Python Pydantic Models (backend/src/models)\n  • Auto-generated from the above schemas and hand-tweaked for enum/type safety\n  • Round-trip serialization using orjson\n\n✅ TypeScript Types (frontend/src/types)\n  • Generated via quicktype in build script `npm run build:types`\n  • Re-exported barrel file `index.ts` for easy imports\n\n✅ Contract Features\n  • Command, state, and error payload patterns with priority, ack, retry, and versioning support\n  • Strict validation across the stack; sample data fixtures included for integration tests\n",
+        "testStrategy": "Python: 12 pytest cases validate model construction, validation errors, and round-trip serialization.\nTypeScript: 4 jest tests confirm schema <-> type coherence and client serialization.\nCI step runs `jsonschema-cli validate` on sample payloads and `npm run build:types` to catch drift.\nSwagger/OpenAPI docs auto-generated from pydantic models for backend reference.",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Implement Tile Grid & Placement UI (Single-Player)",
+        "description": "Render 40×40 grid, 15-second tile offer cycle, placement rules, banking queue and starter setup.",
+        "details": "Frontend/TypeScript:\n• const grid = new Map<string, Tile>(); // key = `${x},${y}`\n• PixiJS container per tile; use viewport plugin for pan/zoom.\n• setInterval(15_000, () => showTileOptions());\n• showTileOptions(): draws modal with 3 random tiles, onClick => placeTile(x,y, tile).\n• placeTile validates adjacency (touches ≥1 tile), updates grid and UI.\n• Maintain `bank:Array<Tile>` size ≤3; user can drag queued tiles.\n• Init function seeds quadrants with capital cities, scatters resources/marshes.\n• Persist state in localStorage for reload resilience.\n",
+        "testStrategy": "Cypress e2e:\n1. Load page ⇒ expect 4 capitals placed.\n2. Wait 15s ⇒ modal appears with 3 tiles.\n3. Click tile, hover valid square ⇒ highlight, click ⇒ tile placed.\n4. Try illegal placement ⇒ placement rejected.\n5. Queue >3 tiles ⇒ oldest discarded.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement 40x40 Grid Rendering & Viewport",
+            "description": "Set up the visual 40x40 tile grid using PixiJS, ensuring each tile has its own container. Integrate the viewport plugin for pan and zoom functionality, allowing users to navigate the large grid.",
+            "dependencies": [],
+            "details": "Render 40×40 grid. PixiJS container per tile; use viewport plugin for pan/zoom.\n<info added on 2025-07-15T17:22:00.984Z>\nCompleted implementation of Subtask 3.1:\n\n• Integrated pixi-viewport (drag, pinch, wheel, clamp; zoom 0.5×–3×).  \n• Refactored GameRenderer to create a Viewport and populate 40 × 40 tile containers at correct world coordinates.  \n• Added subtle gridline background and per-tile rendering with colour/symbol by type.  \n• Enabled interactivity: hover highlights, click dispatches custom `tile:select` events.  \n• Implemented tile-highlight utility for valid placement previews.  \n• Viewport script embedded in index.html and verified on desktop/mobile.\n\nGrid is now fully navigable and responsive; marking Subtask 3.1 as complete and ready to begin Subtask 3.2 (Initial Map Setup & Local Storage).\n</info added on 2025-07-15T17:22:00.984Z>",
+            "status": "done",
+            "testStrategy": "Visually verify grid renders correctly and pan/zoom works smoothly."
+          },
+          {
+            "id": 2,
+            "title": "Implement Initial Map Setup & Local Storage",
+            "description": "Develop the initialization function responsible for seeding the game map with starting elements, specifically placing capital cities in quadrants and scattering resources/marshes. Also, implement state persistence using localStorage to ensure game state can be reloaded.",
+            "dependencies": [
+              1
+            ],
+            "details": "Init function seeds quadrants with capital cities, scatters resources/marshes. Persist state in localStorage for reload resilience.\n<info added on 2025-07-15T17:26:35.603Z>\nCompleted implementation:\n\n• initializeMap(): wipes grid, instantiates 40×40 Tile objects, and calls placeCapitalCities(), scatterResourceTiles()  \n• placeCapitalCities(): drops 4 capitals at (10,10), (30,10), (10,30), (30,30) and assigns owners  \n• scatterResourceTiles(): randomly selects 3 legal coordinates per resource type (mine, orchard, monastery, marsh) while enforcing ≥3-tile Manhattan distance from any capital  \n• Tile model expanded to include {type, resources, hp, edges, ownerId} and adjacency helpers  \n\nPersistence layer:  \n• saveToLocalStorage(), loadFromLocalStorage(), clearLocalStorage() with versioning key \"civ-game-v1\"  \n• enableAutoSave(intervalMs = 10_000) / disableAutoSave() integrated into Game lifecycle (init, beforeunload)  \n\nUI hooks:  \n• setupInitialState() now attempts load → fallback initializeMap() → immediate render  \n• tileRenderer draws all seeded tiles on first frame  \n\nOutcome: initial board renders deterministically, resource yields are correct, and full game state survives page refreshes. Subtask 3.2 is now functionally complete.\n</info added on 2025-07-15T17:26:35.603Z>",
+            "status": "done",
+            "testStrategy": "Load page ⇒ expect 4 capitals placed."
+          },
+          {
+            "id": 3,
+            "title": "Implement 15-Second Tile Offer Cycle & Modal",
+            "description": "Create a mechanism to periodically offer new tiles to the player every 15 seconds. This involves a modal UI that displays 3 random tile options, allowing the user to select one for placement.",
+            "dependencies": [
+              1
+            ],
+            "details": "setInterval(15_000, () => showTileOptions()); showTileOptions(): draws modal with 3 random tiles, onClick => placeTile(x,y, tile).\n<info added on 2025-07-15T17:29:39.054Z>\nImplemented full production-ready tile offer system:\n\n• Game lifecycle hooks: startPlacementCycle() begins 15-sec setInterval after game start; stopPlacementCycle() clears timer on game end or modal close to prevent leaks.  \n• Modal pipeline: initializeModal() sets DOM refs/listeners; showTileOptions() populates and opens modal every 15 s; closeModal() handles teardown.  \n• Tile generation: generateTileOptions() pulls three random Tile prototypes, enriching them via getTileResources(), generateTileEdges(), getTileHP(); resource mapping added (mines=25 g, orchards=25 f, monasteries=25 f, cities=15 g+15 f).  \n• Selection timer: 15-s countdown shown in modal, pulses during final 5 s, auto-selects first tile on expiry.  \n• Tile bank: addToTileBank() maintains a FIFO queue capped at 3 entries for later placement.  \n• UI/UX polish: responsive preview cards (120 px), color-coded resource badges, hover/scale animations, countdown pulse.  \n• All timers, listeners, and DOM nodes are cleaned up on modal close or game end.  \n\nSubtask 3.3 is now feature-complete and ready for hand-off to Subtask 3.4 (Tile Placement Rules & Grid Update).\n</info added on 2025-07-15T17:29:39.054Z>",
+            "status": "done",
+            "testStrategy": "Wait 15s ⇒ modal appears with 3 tiles."
+          },
+          {
+            "id": 4,
+            "title": "Implement Tile Placement Rules & Grid Update",
+            "description": "Develop the core `placeTile` function responsible for validating tile placement based on adjacency rules (must touch at least one existing tile). Upon valid placement, update the internal `grid` data structure and reflect the change in the UI.",
+            "dependencies": [
+              1
+            ],
+            "details": "placeTile validates adjacency (touches ≥1 tile), updates grid and UI. const grid = new Map<string, Tile>(); // key = `${x},${y}`\n<info added on 2025-07-15T17:33:54.288Z>\nImplementation completed and validated:\n\n• Added comprehensive placeTile() pipeline (isValidCoordinate, hasAdjacentTile, isEdgeCompatible, edgesMatch) enforcing full adjacency and edge-matching rules.  \n• Edge compatibility matrix: field↔any, city↔city/field, marsh↔marsh/field; rejects all other combinations.  \n• Grid mutation: tiles stored in Map<\"x,y\",Tile>, owner/workers/timestamp auto-assigned, ‘tilePlaced’ event dispatched and state persisted to localStorage.  \n• getValidPlacementPositions() scans entire 40×40 grid, returns highlight list for UI; scales efficiently with grid size.  \n• Placement-mode UI: enter/exit flows, green highlight for valid cells, red flash + toast on invalid attempt, cancel button & Esc support.  \n• Interactive grid hooks: unified tileClick dispatcher, showPlacementError(), placement instruction overlay.  \n• Resource manager integration: automatic resource grant on successful placement.  \n• All flows tested: adjacency, edge rules, UI feedback, persistence across refresh. Subtask functionality considered complete; ready to advance to Tile Banking Queue implementation.\n</info added on 2025-07-15T17:33:54.288Z>",
+            "status": "done",
+            "testStrategy": "Click tile, hover valid square ⇒ highlight, click ⇒ tile placed. Try illegal placement ⇒ placement rejected."
+          },
+          {
+            "id": 5,
+            "title": "Implement Tile Banking Queue & User Interaction",
+            "description": "Create and manage a tile banking queue (`bank:Array<Tile>`) that holds up to 3 tiles. Implement functionality for users to drag tiles from this queue onto the grid for placement. Ensure the queue size is maintained, discarding the oldest tile if a new one is added when the bank is full.",
+            "dependencies": [
+              1,
+              4
+            ],
+            "details": "Maintain bank:Array<Tile> size ≤3; user can drag queued tiles.\n<info added on 2025-07-15T17:39:03.928Z>\nImplemented full tile banking system and user interaction layer:\n\n• FIFO queue (`bank:Array<Tile>`) capped at 3; `addToTileBank()` auto-drops oldest entry when full, `removeTileFromBank()` cleans up UI/state.  \n• Bottom-right Tile Bank UI with header count (e.g., “2/3”), empty-state message, and rich preview cards showing type, resources, HP.  \n• Click-to-place flow: `selectTileFromBank()` enters placement mode, `clearBankSelection()` resets on success/failure.  \n• Drag-and-drop flow: HTML5 drag attributes on cards, drag overlay with opacity/rotation; canvas `dragover`/`drop` events call `handleCanvasDrop()`—converts viewport→world→grid and invokes existing placement validation.  \n• Events: `tileSelectedFromBank`, `tileDragStart`, `tileDragEnd`; maintains `draggedTile` & `draggedTileIndex`, resets cleanly after placement.  \n• CSS: ~150 lines for responsive layout, hover/drag animations, z-index layering.  \n• Automated UI refresh on every add/remove; visual feedback for valid/invalid targets; queue behavior verified via manual and automated tests.\n</info added on 2025-07-15T17:39:03.928Z>",
+            "status": "done",
+            "testStrategy": "Queue >3 tiles ⇒ oldest discarded. Verify drag-and-drop functionality for placing tiles from the bank."
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Resource Generation & Worker Management",
+        "description": "Add real-time resource tick, 5 workers per player with placement/recall and additive production logic.",
+        "details": "• resources = {gold:0, food:0, faith:0, cap:500};\n• requestAnimationFrame loop accumulates deltaTime; every 1000 ms call tickResources().\n• tickResources(): iterate grid, sum yields per connected component using flood-fill keyed by owner & tileType.\n• Worker UI: sidebar list with drag-and-drop onto eligible tiles; recall sets `worker=null` then `setTimeout(10_000,… )` before reuse.\n• Update resource bar sprites (Pixi bitmap text) in real time.\n• Prevent overflow >cap.\n",
+        "testStrategy": "Jest unit tests for tickResources() on mocked grids.\nManual QA: place 3 connected cities + 1 magistrate ⇒ resource/sec equals 3. Recall worker ⇒ production drops after 0 s; worker re-available after 10 s.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Unit Rendering, Movement & Combat",
+        "description": "Create sprite-based units with stat sheet, pathing, combat radius and rock-paper-scissors multipliers.",
+        "details": "• classes: Unit (id, type, hp, atk, speed, owner)\n• Pathing: simple A* on grid avoiding marsh weight=2.\n• Movement loop: deltaPos = speed * deltaTime; update sprite.x/y.\n• Combat: spatial hash per frame to detect enemies within range; apply damage/sec = atk * multiplier.\n• Training: city/barracks right-click ⇒ show menu; deduct gold/food; setTimeout( buildTime ).\n• Death: hp<=0 ⇒ fade-out animation, remove from state.\n",
+        "testStrategy": "Mocha headless:\n• Spawn infantry vs archer adjacent ⇒ expect infantry hp >0, archer <0 after simulation.\nPerformance: spawn 50 units, measure FPS >55 on Chrome laptop.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "FastAPI WebSocket Server & Game State Sync",
+        "description": "Create WebSocket endpoints, authoritative tick loop, and in-memory game rooms supporting 2-4 players.",
+        "details": "Python 3.12 + FastAPI:\n• /ws/{room_id}/{player_id}\n• Connection handler joins `Room` dataclass: {players:set, state:GameState, tick=0}.\n• `asyncio.create_task(room_loop(room))` runs 10 fps:\n   broadcast({type:\"state\", payload=room.state})\n• Accept client cmds: {type:\"cmd\", action:\"placeTile|moveUnit|trainUnit\", data:{…}}; validate vs state; mutate.\n• Matchmaking endpoint /match ⇒ returns room_id.\n• Use `orjson` for fast serialization.\n",
+        "testStrategy": "pytest + WebSocketTestSession:\n• Connect 3 clients ⇒ receive identical state hashes.\n• Send illegal tile placement ⇒ server returns error message.\nBenchmark: simulate 4 players 200 cmds/s ⇒ CPU <50 %.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Frontend Multiplayer Integration & UI Feedback",
+        "description": "Wire PixiJS client to WebSocket, reconcile authoritative state, display other players’ actions and latency smoothing.",
+        "details": "• ws = new WebSocket(`${WS_URL}/ws/${room}/${player}`);\n• Maintain localPrediction → on server update run diff patch; tween position to avoid snap.\n• Toast banner when server message `{type:\"action\", msg}` (e.g., \"Player2 placed a city\").\n• Adaptive tile cycle timer based on playersAlive (60s/4p, 45s/3p…).\n• Handle disconnect/reconnect: exponential back-off, state re-sync request.\n",
+        "testStrategy": "Run 2 browser tabs, perform actions, observe sync within <200 ms.\nThrottle latency 200 ms via DevTools ⇒ motion remains smooth with interpolation.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Conquest & Watchtower Mechanics",
+        "description": "Add capital HP, elimination flow, raiding, tile capture, and watchtower defense aura.",
+        "details": "Server-side:\n• Tile model gains `capturable:bool`.\n• Damage rules: siege ×2 vs buildings.\n• On capital hp<=0 ⇒ mark player eliminated, remove from placement cycle, broadcast victory check.\n• Raiding: attacker action steals 0.1 × defender tile resources, updates both inventories.\n• Watchtower: when unit enters aura radius=2, apply defBuff=1.25 in combat calc.\nClient:\n• Capital hp bar UI, elimination banners.\n",
+        "testStrategy": "Integration test: python simulate players, destroy capital ⇒ eliminated flag true, placement timer adjusts.\nUnit tests for aura function defBuff().",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Tech Tree & Progression System",
+        "description": "Implement Manor→Duchy→Kingdom upgrades, tech menu, and monastery abilities with cost deductions and cooldowns.",
+        "details": "• Add `player.level` enum.\n• Upgrade action validates resources, triggers 5-s progress bar; upon completion unlocks new units/tiles.\n• TechMenu React-style overlay in Pixi UI, listing Upgrade buttons with tooltip showing effects.\n• Abilities: Heal & Inspire cost faith; add cooldown Map<ability, ts>.\n• Balance constants stored in /shared/balance.ts & mirrored in Python.\n",
+        "testStrategy": "Unit: attempt Duchy upgrade with insufficient resources ⇒ blocked.\nE2E: speedrun Manor→Kingdom in ~15 min, monitor resource curve matches PRD targets.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "AI Opponents, Visual/Audio Polish & Performance Optimization",
+        "description": "Create heuristic-based AI, replace placeholders with final assets, add SFX/BGM, and profile render loop.",
+        "details": "AI (backend):\n• Decision tree each 5 s: if resourcesTileNearby ⇒ place, else if armyWeak ⇒ train, else attack weakest rival.\n• Pathfinding shares A* util.\nVisuals:\n• Load texture atlas .json generated by Aseprite.\n• Animations: GSAP timeline for tile fade-in, unit sprite sheet walk cycles.\nAudio:\n• Howler.js for music loop + combat SFX.\nPerformance:\n• use PIXI.BaseTexture.fromBuffer batching; limit units/player 50; auto-purge textures on lost context.\n",
+        "testStrategy": "Play solo vs 3 AIs: ensure they progress Manor→Kingdom and attack.\nLighthouse performance audit: 60 FPS, memory <300 MB on Chrome i3 laptop.\nAudio: mute/unmute toggles without crackle.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-07-15T16:18:01.677Z",
+      "updated": "2025-07-15T17:39:34.353Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tile",
+  "description": "A tile in the Carcassonne: War of Ages game",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the tile (e.g., '10,15')"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "capital_city",
+        "city",
+        "field",
+        "monastery",
+        "marsh",
+        "mine",
+        "orchard",
+        "barracks",
+        "watchtower"
+      ],
+      "description": "Type of tile"
+    },
+    "x": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 39,
+      "description": "X coordinate on the 40x40 grid"
+    },
+    "y": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 39,
+      "description": "Y coordinate on the 40x40 grid"
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["city", "field", "monastery", "marsh", "mine", "orchard", "barracks", "watchtower"]
+      },
+      "minItems": 4,
+      "maxItems": 4,
+      "description": "Edges of the tile [North, East, South, West]"
+    },
+    "hp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current hit points"
+    },
+    "maxHp": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum hit points"
+    },
+    "owner": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Player ID who owns this tile, null if unowned"
+    },
+    "worker": {
+      "type": ["object", "null"],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Worker ID"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["magistrate", "farmer", "monk", "scout"],
+          "description": "Worker type"
+        },
+        "owner": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Player ID who owns this worker"
+        }
+      },
+      "required": ["id", "type", "owner"],
+      "description": "Worker placed on this tile, null if no worker"
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "gold": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Gold generation per second"
+        },
+        "food": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Food generation per second"
+        },
+        "faith": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Faith generation per second"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Resource generation of this tile"
+    },
+    "placedAt": {
+      "type": "number",
+      "description": "Timestamp when tile was placed"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "canTrain": {
+          "type": "boolean",
+          "description": "Whether units can be trained at this tile"
+        },
+        "workerCapacity": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum number of workers this tile can hold"
+        },
+        "defenseBonus": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Defense bonus provided by this tile"
+        },
+        "speedMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Speed multiplier for units passing through"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Additional tile metadata"
+    }
+  },
+  "required": ["id", "type", "x", "y", "edges", "hp", "maxHp", "owner", "resources", "placedAt"],
+  "additionalProperties": false
+} 

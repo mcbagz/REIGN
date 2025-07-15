@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Unit",
+  "description": "A unit in the Carcassonne: War of Ages game",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the unit"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "infantry",
+        "archer",
+        "knight",
+        "siege"
+      ],
+      "description": "Type of unit"
+    },
+    "owner": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Player ID who owns this unit"
+    },
+    "position": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 39,
+          "description": "X coordinate on the 40x40 grid"
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 39,
+          "description": "Y coordinate on the 40x40 grid"
+        }
+      },
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "description": "Current position of the unit"
+    },
+    "hp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current hit points"
+    },
+    "maxHp": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum hit points"
+    },
+    "attack": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Attack damage"
+    },
+    "defense": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Defense rating"
+    },
+    "speed": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Movement speed in tiles per second"
+    },
+    "range": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Attack range in tiles"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "moving",
+        "attacking",
+        "dead",
+        "training"
+      ],
+      "description": "Current status of the unit"
+    },
+    "target": {
+      "type": ["object", "null"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["tile", "unit"],
+          "description": "Type of target"
+        },
+        "id": {
+          "type": "string",
+          "description": "ID of the target"
+        },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 39
+            }
+          },
+          "required": ["x", "y"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["type", "id", "position"],
+      "additionalProperties": false,
+      "description": "Current target for movement or attack, null if none"
+    },
+    "createdAt": {
+      "type": "number",
+      "description": "Timestamp when unit was created"
+    },
+    "lastAction": {
+      "type": ["number", "null"],
+      "description": "Timestamp of last action, null if no action taken"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "trainingTime": {
+          "type": "number",
+          "description": "Time in seconds to train this unit"
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "gold": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "food": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "faith": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "description": "Resource cost to train this unit"
+        },
+        "effectiveness": {
+          "type": "object",
+          "properties": {
+            "infantry": {
+              "type": "number",
+              "description": "Damage multiplier vs infantry"
+            },
+            "archer": {
+              "type": "number",
+              "description": "Damage multiplier vs archer"
+            },
+            "knight": {
+              "type": "number",
+              "description": "Damage multiplier vs knight"
+            },
+            "siege": {
+              "type": "number",
+              "description": "Damage multiplier vs siege"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Combat effectiveness against different unit types"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Additional unit metadata"
+    }
+  },
+  "required": ["id", "type", "owner", "position", "hp", "maxHp", "attack", "defense", "speed", "range", "status", "createdAt"],
+  "additionalProperties": false
+} 

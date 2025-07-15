@@ -1,0 +1,40 @@
+{
+  "name": "carcassonne-war-of-ages-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Carcassonne: War of Ages game",
+  "main": "index.html",
+  "scripts": {
+    "dev": "python -m http.server 8080",
+    "build": "npm run generate-types && echo 'Static build - no build process needed'",
+    "test": "echo 'No tests configured yet'",
+    "lint": "echo 'No linting configured yet'",
+    "start": "python -m http.server 8080",
+    "generate-types": "node scripts/generate-types.js"
+  },
+  "dependencies": {
+    "pixi-viewport": "^6.0.3",
+    "pixi.js": "^7.4.2"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2",
+    "quicktype": "^23.2.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/carcassonne-war-of-ages.git"
+  },
+  "keywords": [
+    "game",
+    "carcassonne",
+    "strategy",
+    "medieval",
+    "pixi",
+    "realtime"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/yourusername/carcassonne-war-of-ages/issues"
+  },
+  "homepage": "https://github.com/yourusername/carcassonne-war-of-ages#readme"
+}
