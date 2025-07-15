@@ -43,7 +43,7 @@ class Game {
             
             // Initialize UI Manager
             this.uiManager = new UIManager();
-            this.uiManager.init();
+            this.uiManager.init(this.renderer);
             
             // Initialize game systems
             this.tileSystem = new TileSystem(this.gameState);
@@ -117,6 +117,11 @@ class Game {
         document.addEventListener('tileDragStart', this.handleTileDragStart.bind(this));
         document.addEventListener('tileDragEnd', this.handleTileDragEnd.bind(this));
         
+        // Worker events
+        document.addEventListener('workerDragStart', this.handleWorkerDragStart.bind(this));
+        document.addEventListener('workerDragEnd', this.handleWorkerDragEnd.bind(this));
+        document.addEventListener('workerRecallRequest', this.handleWorkerRecallRequest.bind(this));
+        
         // Canvas drag and drop events
         this.setupCanvasDragDrop();
         
@@ -185,6 +190,22 @@ class Game {
     }
     
     handleCanvasDrop(event) {
+        // Check for worker drag data
+        const dragData = event.dataTransfer.getData('text/plain');
+        if (dragData) {
+            try {
+                const data = JSON.parse(dragData);
+                if (data.type === 'worker' && data.workerId) {
+                    // Handle worker drop
+                    this.handleWorkerDrop(event, data.workerId);
+                    return;
+                }
+            } catch (error) {
+                console.error('Error parsing drag data:', error);
+            }
+        }
+        
+        // Handle tile drop (existing logic)
         if (!this.draggedTile) return;
         
         // Get drop position relative to canvas
@@ -219,8 +240,116 @@ class Game {
         }
     }
     
+    handleWorkerDrop(event, workerId) {
+        // Get drop position relative to canvas
+        const rect = event.target.getBoundingClientRect();
+        const canvasX = event.clientX - rect.left;
+        const canvasY = event.clientY - rect.top;
+        
+        // Convert canvas coordinates to world coordinates
+        const worldCoords = this.renderer.viewport.toWorld(canvasX, canvasY);
+        
+        // Convert world coordinates to grid coordinates
+        const gridX = Math.floor(worldCoords.x / GameConfig.TILE_SIZE);
+        const gridY = Math.floor(worldCoords.y / GameConfig.TILE_SIZE);
+        
+        const tileKey = `${gridX},${gridY}`;
+        
+        // Attempt to place the worker
+        const success = this.gameState.placeWorker(workerId, tileKey);
+        
+        if (success) {
+            console.log(`Worker ${workerId} placed on tile at (${gridX}, ${gridY})`);
+            
+            // Update UI
+            this.updateWorkerUI();
+        } else {
+            console.log(`Failed to place worker ${workerId} on tile at (${gridX}, ${gridY})`);
+        }
+    }
+    
+    handleWorkerDragStart(event) {
+        const { workerId } = event.detail;
+        
+        // Show valid placement positions for workers
+        const validPositions = this.getValidWorkerPlacements(workerId);
+        this.highlightValidWorkerPlacements(validPositions);
+        
+        console.log(`Worker ${workerId} drag started`);
+    }
+    
+    handleWorkerDragEnd(event) {
+        const { workerId } = event.detail;
+        
+        // Clear valid placement highlights
+        this.clearValidWorkerPlacements();
+        
+        console.log(`Worker ${workerId} drag ended`);
+    }
+    
+    handleWorkerRecallRequest(event) {
+        const { workerId } = event.detail;
+        
+        // Recall the worker
+        const success = this.gameState.recallWorker(workerId);
+        
+        if (success) {
+            console.log(`Worker ${workerId} recalled successfully`);
+            
+            // Update UI
+            this.updateWorkerUI();
+        } else {
+            console.log(`Failed to recall worker ${workerId}`);
+        }
+    }
+    
+    getValidWorkerPlacements(workerId) {
+        const currentPlayer = this.gameState.getCurrentPlayer();
+        if (!currentPlayer) return [];
+        
+        const validPositions = [];
+        
+        // Check all tiles owned by current player
+        for (const [tileKey, tile] of this.gameState.tiles.entries()) {
+            if (tile.owner === currentPlayer.id) {
+                const tileStats = GameConfig.TILE_STATS[tile.type];
+                if (tileStats && tileStats.workerCapacity > 0) {
+                    // Check if tile has available worker slots
+                    const workersOnTile = this.gameState.getWorkersOnTile(tileKey);
+                    if (workersOnTile.length < tileStats.workerCapacity) {
+                        validPositions.push({ x: tile.x, y: tile.y });
+                    }
+                }
+            }
+        }
+        
+        return validPositions;
+    }
+    
+    highlightValidWorkerPlacements(positions) {
+        // TODO: Implement tile highlighting in renderer
+        console.log('Highlighting valid worker placements:', positions);
+    }
+    
+    clearValidWorkerPlacements() {
+        // TODO: Clear tile highlights in renderer
+        console.log('Clearing valid worker placement highlights');
+    }
+    
+    updateWorkerUI() {
+        // Update worker display in UI manager
+        if (this.uiManager && this.uiManager.updateWorkerDisplay) {
+            this.uiManager.updateWorkerDisplay(this.gameState);
+        }
+    }
+    
     handleTileClick(event) {
         const { x, y } = event.detail;
+        
+        // Check for worker placement first
+        if (this.uiManager && this.uiManager.handleTileClickForWorkerPlacement(x, y)) {
+            return; // Worker was placed, don't continue with tile placement
+        }
         
         if (this.isPlacementMode && this.selectedTileForPlacement) {
             // Attempt to place the selected tile
@@ -308,6 +437,9 @@ class Game {
         // Start systems
         this.resourceManager.start();
         this.tileSystem.start();
+        
+        // Initialize worker UI
+        this.updateWorkerUI();
         
         // Start game loop
         requestAnimationFrame(this.gameLoop);
@@ -416,10 +548,9 @@ class Game {
             this.tileSystem.stopPlacementCycle();
         }
         
-        // Stop resource manager timers
-        if (this.resourceManager && this.resourceManager.resourceTicker) {
-            clearInterval(this.resourceManager.resourceTicker);
-            this.resourceManager.resourceTicker = null;
+        // Stop resource manager
+        if (this.resourceManager) {
+            this.resourceManager.stopResourceLoop();
         }
         
         // Stop autosave timer

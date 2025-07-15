@@ -49,13 +49,19 @@ class GameState {
             
             // Initialize workers
             for (let j = 0; j < GameConfig.STARTING_WORKERS; j++) {
-                player.workers.push({
-                    id: this.nextWorkerId++,
-                    type: null,
-                    position: null,
-                    available: true,
-                    recallTime: 0
-                });
+                const workerId = this.nextWorkerId++;
+                const worker = {
+                    id: workerId,
+                    owner: i,
+                    status: 'idle', // 'idle', 'deployed', 'cooldown'
+                    tileKey: null,
+                    cooldownTimer: null,
+                    type: 'worker' // All workers are generic for now
+                };
+                player.workers.push(worker);
+                
+                // Add to global workers map for easy lookup
+                this.workers.set(workerId, worker);
             }
             
             this.players.set(i, player);
@@ -696,22 +702,123 @@ class GameState {
         }
     }
     
+    // Worker Management
+    placeWorker(workerId, tileKey) {
+        const worker = this.workers.get(workerId);
+        if (!worker) {
+            console.error(`Worker ${workerId} not found`);
+            return false;
+        }
+        
+        if (worker.status !== 'idle') {
+            console.error(`Worker ${workerId} is not idle (status: ${worker.status})`);
+            return false;
+        }
+        
+        const tile = this.tiles.get(tileKey);
+        if (!tile) {
+            console.error(`Tile ${tileKey} not found`);
+            return false;
+        }
+        
+        // Check if tile is owned by worker's owner
+        if (tile.owner !== worker.owner) {
+            console.error(`Worker ${workerId} cannot be placed on tile ${tileKey} - not owned by player ${worker.owner}`);
+            return false;
+        }
+        
+        // Check if tile can accommodate workers
+        const tileStats = GameConfig.TILE_STATS[tile.type];
+        if (!tileStats || tileStats.workerCapacity === 0) {
+            console.error(`Tile ${tileKey} cannot accommodate workers`);
+            return false;
+        }
+        
+        // Check if tile has space for workers
+        const workersOnTile = Array.from(this.workers.values()).filter(w => w.tileKey === tileKey && w.status === 'deployed');
+        if (workersOnTile.length >= tileStats.workerCapacity) {
+            console.error(`Tile ${tileKey} is at full worker capacity`);
+            return false;
+        }
+        
+        // Place the worker
+        worker.status = 'deployed';
+        worker.tileKey = tileKey;
+        
+        // Emit event for UI updates
+        this.emitEvent('workerPlaced', { workerId, tileKey, worker });
+        
+        console.log(`Worker ${workerId} placed on tile ${tileKey}`);
+        return true;
+    }
+    
+    recallWorker(workerId) {
+        const worker = this.workers.get(workerId);
+        if (!worker) {
+            console.error(`Worker ${workerId} not found`);
+            return false;
+        }
+        
+        if (worker.status !== 'deployed') {
+            console.error(`Worker ${workerId} is not deployed (status: ${worker.status})`);
+            return false;
+        }
+        
+        const tileKey = worker.tileKey;
+        
+        // Remove worker from tile
+        worker.status = 'cooldown';
+        worker.tileKey = null;
+        
+        // Clear any existing cooldown timer
+        if (worker.cooldownTimer) {
+            clearTimeout(worker.cooldownTimer);
+        }
+        
+        // Start cooldown timer
+        worker.cooldownTimer = setTimeout(() => {
+            worker.status = 'idle';
+            worker.cooldownTimer = null;
+            console.log(`Worker ${workerId} cooldown finished - now available`);
+            
+            // Emit event for UI updates
+            this.emitEvent('workerCooldownFinished', { workerId, worker });
+        }, GameConfig.WORKER_RECALL_TIME);
+        
+        // Emit event for UI updates
+        this.emitEvent('workerRecalled', { workerId, tileKey, worker });
+        
+        console.log(`Worker ${workerId} recalled from tile ${tileKey} - cooldown for ${GameConfig.WORKER_RECALL_TIME}ms`);
+        return true;
+    }
+    
+    getWorkersByPlayer(playerId) {
+        return Array.from(this.workers.values()).filter(worker => worker.owner === playerId);
+    }
+    
+    getAvailableWorkers(playerId) {
+        return this.getWorkersByPlayer(playerId).filter(worker => worker.status === 'idle');
+    }
+    
+    getDeployedWorkers(playerId) {
+        return this.getWorkersByPlayer(playerId).filter(worker => worker.status === 'deployed');
+    }
+    
+    getWorkersOnTile(tileKey) {
+        return Array.from(this.workers.values()).filter(worker => worker.tileKey === tileKey && worker.status === 'deployed');
+    }
+    
+    // Helper method to emit events
+    emitEvent(eventName, data) {
+        const event = new CustomEvent(eventName, { detail: data });
+        document.dispatchEvent(event);
+    }
+    
     // Game state updates
     update(deltaTime) {
         this.gameTime += deltaTime;
         
-        // Update worker recall timers
-        this.players.forEach(player => {
-            player.workers.forEach(worker => {
-                if (worker.recallTime > 0) {
-                    worker.recallTime -= deltaTime;
-                    if (worker.recallTime <= 0) {
-                        worker.available = true;
-                        worker.recallTime = 0;
-                    }
-                }
-            });
-        });
+        // Worker cooldown timers are handled by setTimeout, no need to update here
         
         // Update tile placement timing
         // This will be handled by the TileSystem

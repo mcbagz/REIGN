@@ -21,7 +21,7 @@ const GameConfig = {
     },
     
     // Workers
-    STARTING_WORKERS: 8,
+    STARTING_WORKERS: 5,
     WORKER_TYPES: {
         MAGISTRATE: 'magistrate',
         FARMER: 'farmer',
