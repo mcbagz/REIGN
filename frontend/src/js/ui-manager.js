@@ -5,6 +5,7 @@ class UIManager {
         this.modals = new Map();
         this.tooltips = new Map();
         this.initialized = false;
+        this.tweenSystem = null;
         
         // Resource bar properties
         this.resourceBarContainer = null;
@@ -737,6 +738,124 @@ class UIManager {
         // Update worker display periodically
         if (window.game && window.game.gameState) {
             this.updateWorkerDisplay(window.game.gameState);
+        }
+    }
+    
+    // Update UI from server game state
+    updateFromGameState(gameState) {
+        try {
+            console.log('Updating UI from server game state:', gameState);
+            
+            // Update resource display if resources are provided
+            if (gameState.players && Array.isArray(gameState.players)) {
+                // Find current player and update their resources
+                const currentPlayer = gameState.players.find(p => p.id === gameState.current_player);
+                if (currentPlayer && currentPlayer.resources) {
+                    this.updateResourceDisplay(currentPlayer.resources);
+                }
+            }
+            
+            // Update turn information
+            if (gameState.current_player !== undefined) {
+                this.updateCurrentPlayerDisplay(gameState.current_player);
+            }
+            
+            // Update turn timer
+            if (gameState.turn_time_remaining !== undefined) {
+                this.updateTurnTimer(gameState.turn_time_remaining);
+            }
+            
+            // Update game status
+            if (gameState.status) {
+                this.updateGameStatus(gameState.status);
+            }
+            
+            // Update worker display if available
+            if (window.game && window.game.gameState) {
+                this.updateWorkerDisplay(window.game.gameState);
+            }
+            
+        } catch (error) {
+            console.error('Error updating UI from game state:', error);
+        }
+    }
+    
+    // Helper methods for game state updates
+    updateCurrentPlayerDisplay(currentPlayerId) {
+        const playerInfo = document.getElementById('player-info');
+        if (playerInfo) {
+            const playerName = playerInfo.querySelector('.player-name');
+            if (playerName) {
+                playerName.textContent = `Player ${currentPlayerId + 1}`;
+            }
+        }
+    }
+    
+    updateTurnTimer(timeRemaining) {
+        // This would integrate with the cycle timer if needed
+        console.log('Turn time remaining:', timeRemaining);
+    }
+    
+    updateGameStatus(status) {
+        console.log('Game status:', status);
+        // Could update a status indicator in the UI
+    }
+    
+    // Show placement mode UI
+    showPlacementMode(tile) {
+        console.log('Showing placement mode for tile:', tile);
+        // Add visual feedback for tile placement mode
+        // This could include highlighting valid placement areas
+        // or showing a preview of the tile being placed
+        if (this.renderer && this.renderer.app) {
+            // Add placement cursor or preview
+            this.placementMode = true;
+            this.placementTile = tile;
+            // TODO: Add visual placement feedback
+        }
+    }
+    
+    // Hide placement mode UI
+    hidePlacementMode() {
+        console.log('Hiding placement mode');
+        this.placementMode = false;
+        this.placementTile = null;
+        // TODO: Remove visual placement feedback
+    }
+    
+    // Show error message
+    showError(message) {
+        console.log('UI Error:', message);
+        // Use the toast manager if available
+        if (this.toastManager) {
+            this.toastManager.showError(message);
+        } else {
+            // Fallback to console log
+            console.error('Game Error:', message);
+        }
+    }
+    
+    // This method was duplicated - removing the stub version
+    // The real updateWorkerDisplay method is already implemented above
+    
+    // Handle tile click for worker placement
+    handleTileClickForWorkerPlacement(x, y) {
+        console.log('Handling tile click for worker placement:', x, y);
+        // Check if this tile click should be handled for worker placement
+        // Return true if handled, false otherwise
+        return false; // Default: let normal tile handling proceed
+    }
+    
+    // Update method for animation loop
+    update(deltaTime) {
+        // Update any animated UI elements
+        if (this.tooltips.size > 0) {
+            // Update tooltip animations if needed
+        }
+        
+        // Update placement mode visuals
+        if (this.placementMode && this.placementTile) {
+            // Update placement preview
         }
     }
     

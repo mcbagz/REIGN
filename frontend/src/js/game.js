@@ -12,6 +12,15 @@ class Game {
         this.websocketClient = null;
         this.uiManager = null;
         
+        // UI feedback components
+        this.toastManager = null;
+        this.cycleTimer = null;
+        this.offlineBanner = null;
+        
+        // Debug components
+        this.latencyMonitor = null;
+        this.debugOverlay = null;
+        
         // Tile placement state
         this.selectedTileForPlacement = null;
         this.isPlacementMode = false;
@@ -34,6 +43,9 @@ class Game {
         console.log('Initializing game...');
         
         try {
+            // Make game instance available globally
+            window.game = this;
+            
             // Initialize game state
             this.gameState = new GameState(this.config);
             
@@ -44,18 +56,49 @@ class Game {
             // Set game state reference for renderer
             this.renderer.gameState = this.gameState;
             
+            // Initialize tween system
+            this.tweenSystem = new TweenSystem(this.renderer.app);
+            
             // Initialize UI Manager
             this.uiManager = new UIManager();
+            this.uiManager.tweenSystem = this.tweenSystem;
             this.uiManager.init(this.renderer);
+            
+            // Initialize UI feedback components
+            this.toastManager = new ToastManager({
+                position: 'top-right',
+                maxVisible: 3,
+                defaultDuration: 3000
+            });
+            
+            // Connect toast manager to UI manager for error display
+            this.uiManager.toastManager = this.toastManager;
+            
+            this.cycleTimer = new CycleTimer({
+                position: 'top-center',
+                baseTimePerPlayer: 15,
+                maxPlayers: 4,
+                minTime: 30,
+                maxTime: 60
+            });
+            
+            this.offlineBanner = new OfflineBanner({
+                position: 'top',
+                hideDelay: 5000,
+                autoHide: true
+            });
             
             // Initialize game systems
             this.tileSystem = new TileSystem(this.gameState);
             this.resourceManager = new ResourceManager(this.gameState);
             
-            this.unitSystem = new UnitSystem(this.gameState, this.renderer);
+            this.unitSystem = new UnitSystem(this.gameState, this.renderer, this.tweenSystem);
             
             // Initialize unit system
             await this.unitSystem.init();
+            
+            // Pass tween system to renderer for tile animations
+            this.renderer.tweenSystem = this.tweenSystem;
             
             // Initialize unit training UI
             this.unitTrainingUI = new UnitTrainingUI(this.gameState, this.unitSystem);
@@ -66,7 +109,20 @@ class Game {
             // Initialize multiplayer if needed
             if (this.config.mode === 'multiplayer') {
                 this.websocketClient = new WebSocketClient();
-                await this.websocketClient.connect();
+                
+                // Connect to WebSocket with matchmaking
+                const playerName = `player_${Date.now()}`;
+                const matchResult = await this.websocketClient.connectWithMatchmaking(playerName);
+                console.log('Multiplayer matchmaking result:', matchResult);
+                
+                // Initialize debug components
+                this.latencyMonitor = new LatencyMonitor(this.websocketClient);
+                this.debugOverlay = new DebugOverlay(this.renderer.app, this.latencyMonitor, {
+                    position: 'top-left'
+                });
+                
+                // Set up WebSocket event handlers for UI feedback
+                this.setupWebSocketEventHandlers();
             }
             
             // Set up game state
@@ -237,6 +293,57 @@ class Game {
         // Window resize
         window.addEventListener('resize', this.handleResize);
         
+        // Add keyboard event listeners
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                // Exit placement mode on Escape key
+                if (this.isPlacementMode) {
+                    this.exitPlacementMode();
+                }
+            }
+        });
+        
+        // Add right-click to cancel placement mode
+        document.addEventListener('contextmenu', (event) => {
+            if (this.isPlacementMode) {
+                event.preventDefault();
+                this.exitPlacementMode();
+            }
+        });
+        
+        // Debug key bindings
+        document.addEventListener('keydown', (e) => {
+            // Toggle tween system with backtick/tilde key
+            if (e.key === '`' || e.key === '~') {
+                if (this.tweenSystem) {
+                    const isEnabled = !this.tweenSystem.isEnabled;
+                    this.tweenSystem.setEnabled(isEnabled);
+                    this.tweenSystem.setDebugMode(isEnabled);
+                    console.log(`TweenSystem ${isEnabled ? 'enabled' : 'disabled'}`);
+                    
+                    // Show debug stats if enabled
+                    if (isEnabled) {
+                        console.log('TweenSystem Stats:', this.tweenSystem.getDebugStats());
+                    }
+                }
+                
+                // Also toggle debug overlay
+                if (this.debugOverlay) {
+                    this.debugOverlay.toggle();
+                    const isVisible = this.debugOverlay.isOverlayVisible();
+                    console.log(`DebugOverlay ${isVisible ? 'shown' : 'hidden'}`);
+                    
+                    // Show performance stats if enabled
+                    if (isVisible) {
+                        console.log('Performance Stats:', this.debugOverlay.getPerformanceStats());
+                        console.log('Latency Metrics:', this.latencyMonitor.getMetrics());
+                    }
+                }
+                
+                e.preventDefault();
+            }
+        });
+        
         // Add cleanup event listeners
         window.addEventListener('beforeunload', () => {
             this.stop();
@@ -253,6 +360,179 @@ class Game {
                 this.stop();
             }
         });
+    }
+    
+    setupWebSocketEventHandlers() {
+        if (!this.websocketClient) return;
+        
+        // Handle WebSocket connection events
+        this.websocketClient.on('connected', () => {
+            console.log('WebSocket connected');
+            this.offlineBanner.setConnectedState();
+            
+            // Start latency monitoring
+            if (this.latencyMonitor) {
+                this.latencyMonitor.start();
+            }
+        });
+        
+        this.websocketClient.on('disconnected', () => {
+            console.log('WebSocket disconnected');
+            this.offlineBanner.show('Connection lost', 'Disconnected');
+            this.cycleTimer.pause();
+            
+            // Stop latency monitoring
+            if (this.latencyMonitor) {
+                this.latencyMonitor.stop();
+            }
+        });
+        
+        this.websocketClient.on('reconnecting', (attempts) => {
+            console.log(`WebSocket reconnecting (attempt ${attempts})`);
+            this.offlineBanner.show('Reconnecting...', `Reconnecting... (attempt ${attempts})`);
+            this.offlineBanner.updateReconnectAttempts(attempts);
+        });
+        
+        this.websocketClient.on('reconnected', () => {
+            console.log('WebSocket reconnected');
+            this.offlineBanner.setConnectedState();
+            this.toastManager.showSuccess('Connection restored');
+        });
+        
+        // Handle game state updates
+        this.websocketClient.on('state', (gameState) => {
+            console.log('Received game state update');
+            
+            // Update cycle timer based on players alive
+            if (gameState.playersAlive !== undefined) {
+                this.cycleTimer.updatePlayersAlive(gameState.playersAlive);
+            }
+            
+            // Update debug overlay tick information
+            if (this.debugOverlay && gameState.tick !== undefined) {
+                this.debugOverlay.updateTick(gameState.tick);
+            }
+            
+            // Handle any other state-based UI updates
+            this.handleGameStateUpdate(gameState);
+        });
+        
+        // Handle player action messages
+        this.websocketClient.on('action', (actionMessage) => {
+            console.log('Received action message:', actionMessage);
+            
+            if (actionMessage.msg && actionMessage.player) {
+                this.toastManager.showActionToast(actionMessage.player, actionMessage.msg);
+            } else if (actionMessage.msg) {
+                this.toastManager.showInfo(actionMessage.msg);
+            }
+        });
+        
+        // Handle WebSocket errors
+        this.websocketClient.on('error', (error) => {
+            console.error('WebSocket error:', error);
+            this.toastManager.showError('Connection error occurred');
+        });
+        
+        // Handle connection events
+        this.websocketClient.on('disconnected', (data) => {
+            console.log('WebSocket disconnected:', data);
+            this.offlineBanner.show();
+            this.toastManager.showWarning('Connection lost');
+        });
+        
+        // Handle successful connection
+        this.websocketClient.socket.addEventListener('open', () => {
+            console.log('WebSocket connected');
+            this.offlineBanner.hide();
+            this.toastManager.showSuccess('Connected to game');
+        });
+        
+        // Set up offline banner reconnect handler
+        this.offlineBanner.onReconnectClick(() => {
+            if (this.websocketClient) {
+                this.websocketClient.reconnect();
+            }
+        });
+        
+        // Set up cycle timer callbacks
+        this.cycleTimer.onComplete(() => {
+            this.handleCycleTimerComplete();
+        });
+        
+        this.cycleTimer.onTick((currentTime, maxTime) => {
+            this.handleCycleTimerTick(currentTime, maxTime);
+        });
+    }
+    
+    handleGameStateUpdate(gameState) {
+        // Update game state
+        if (this.gameState) {
+            this.gameState.updateFromServer(gameState);
+        }
+        
+        // Update UI components
+        this.uiManager.updateFromGameState(gameState);
+        
+        // Update renderer
+        if (this.renderer) {
+            this.renderer.update(gameState);
+        }
+    }
+    
+    handleCycleTimerComplete() {
+        console.log('Cycle timer completed');
+        this.toastManager.showWarning('Time\'s up! Moving to next phase');
+        
+        // Handle end of placement phase
+        if (this.isPlacementMode) {
+            this.exitPlacementMode();
+        }
+        
+        // Send time up event if in multiplayer
+        if (this.websocketClient) {
+            this.websocketClient.send({
+                type: 'timeUp',
+                timestamp: Date.now()
+            });
+        }
+    }
+    
+    handleCycleTimerTick(currentTime, maxTime) {
+        // Show warnings at specific time intervals
+        if (currentTime === 10 && maxTime > 10) {
+            this.toastManager.showWarning('10 seconds remaining!');
+        } else if (currentTime === 5 && maxTime > 5) {
+            this.toastManager.showWarning('5 seconds remaining!');
+        }
+    }
+    
+    startCycleTimer(duration = null) {
+        if (this.cycleTimer) {
+            this.cycleTimer.start(duration);
+            console.log('Cycle timer started');
+        }
+    }
+    
+    stopCycleTimer() {
+        if (this.cycleTimer) {
+            this.cycleTimer.stop();
+            console.log('Cycle timer stopped');
+        }
+    }
+    
+    pauseCycleTimer() {
+        if (this.cycleTimer) {
+            this.cycleTimer.pause();
+            console.log('Cycle timer paused');
+        }
+    }
+    
+    resetCycleTimer() {
+        if (this.cycleTimer) {
+            this.cycleTimer.reset();
+            console.log('Cycle timer reset');
+        }
     }
     
     setupCanvasDragDrop() {
@@ -465,15 +745,19 @@ class Game {
             const success = this.gameState.placeTile(x, y, this.selectedTileForPlacement);
             
             if (success) {
+                console.log('Tile placed successfully');
                 // Remove from tile bank
                 this.tileSystem.removeTileFromBank(this.selectedTileForPlacement);
                 
                 // Exit placement mode
                 this.exitPlacementMode();
             } else {
-                console.log('Tile placement failed');
-                // Show error feedback
+                console.log('Tile placement failed - but NOT exiting placement mode');
+                // Show error feedback but don't exit placement mode
                 this.showPlacementError(x, y);
+                
+                // Allow user to try again or manually exit placement mode
+                // They can click outside the game area or press Escape to exit
             }
         } else {
             console.log('Not in placement mode or no tile selected');
@@ -509,6 +793,11 @@ class Game {
         
         // Clear valid placement highlights
         this.renderer.clearHighlights();
+        
+        // Hide placement mode UI
+        if (this.uiManager) {
+            this.uiManager.hidePlacementMode();
+        }
         
         // Clear dragged tile
         this.draggedTile = null;

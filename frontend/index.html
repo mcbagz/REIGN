@@ -178,25 +178,49 @@
             });
         }
         
-        // Load PIXI first, then pixi-viewport
+        // Load PIXI first, then pixi-viewport, then GSAP
         loadPixi()
             .then(() => loadPixiViewport())
+            .then(() => loadGSAP())
             .catch(console.error);
+        
+        function loadGSAP() {
+            return new Promise((resolve, reject) => {
+                const gsapScript = document.createElement('script');
+                gsapScript.src = 'node_modules/gsap/dist/gsap.min.js';
+                gsapScript.onload = () => {
+                    console.log('GSAP loaded successfully');
+                    resolve();
+                };
+                gsapScript.onerror = (error) => {
+                    console.error('Failed to load GSAP:', error);
+                    reject(error);
+                };
+                document.head.appendChild(gsapScript);
+            });
+        }
     </script>
     
     <!-- Game Scripts -->
     <script src="src/js/config.js"></script>
     <script src="src/js/utils.js"></script>
+    <script src="src/js/tween-system.js"></script>
+    <script src="src/js/toast-manager.js"></script>
+    <script src="src/js/cycle-timer.js"></script>
+    <script src="src/js/offline-banner.js"></script>
+    <script src="src/js/latency-monitor.js"></script>
+    <script src="src/js/debug-overlay.js"></script>
     <script src="src/js/tile-system.js"></script>
     <script src="src/js/resource-manager.js"></script>
     <script src="src/js/unit-system.js"></script>
     <script src="src/js/unit-commands.js"></script>
     <script src="src/js/unit-training-ui.js"></script>
     <script src="src/js/game-state.js"></script>
-    <script src="src/js/renderer.js"></script>
-    <script src="src/js/ui-manager.js"></script>
-    <script src="src/js/websocket-client.js"></script>
-    <script src="src/js/game.js"></script>
-    <script src="src/js/main.js"></script>
+    <script src="src/js/renderer.js?v=1.6"></script>
+    <script src="src/js/ui-manager.js?v=1.6"></script>
+    <script src="src/js/game-state.js?v=1.6"></script>
+    <script src="src/js/websocket-client.js?v=1.6"></script>
+    <script src="src/js/game.js?v=1.6"></script>
+    <script src="src/js/main.js?v=1.6"></script>
 </body>
 </html> 

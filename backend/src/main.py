@@ -114,6 +114,11 @@ def enhance_tile_resources(tile, worker_type):
 async def send_error_response(websocket: WebSocket, message: str, error_code: str = "GENERAL_ERROR"):
     """Send a standardized error response to the client."""
     try:
+        # Check if WebSocket is still open
+        if websocket.client_state.name != "CONNECTED":
+            logger.warning(f"Attempted to send error response to closed WebSocket: {message}")
+            return
+            
         error_response = {
             "type": "error",
             "payload": {
@@ -270,6 +275,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
         # Listen for messages
         while True:
             try:
+                # Check if WebSocket is still connected before trying to receive
+                if websocket.client_state.name != "CONNECTED":
+                    logger.info(f"WebSocket for player {player_id} is no longer connected")
+                    break
+                
                 data = await websocket.receive_text()
                 
                 # Validate message size (prevent DoS attacks)
@@ -287,10 +297,20 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
                 await handle_message(room, player_id, message, websocket)
                 
             except asyncio.CancelledError:
+                logger.info(f"Cancelled message handling for player {player_id}")
+                break
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket disconnected for player {player_id}")
                 break
             except Exception as e:
                 logger.error(f"Error handling message from {player_id}: {e}")
-                await send_error_response(websocket, "Message processing error", "PROCESSING_ERROR")
+                
+                # Only try to send error response if connection is still active
+                if websocket.client_state.name == "CONNECTED":
+                    await send_error_response(websocket, "Message processing error", "PROCESSING_ERROR")
+                else:
+                    logger.info(f"Skipping error response for {player_id} - connection closed")
+                    break
             
     except WebSocketDisconnect:
         logger.info(f"Player {player_id} disconnected from room {room_id}")
@@ -769,6 +789,13 @@ async def broadcast_to_others(room: Room, exclude_player_id: str, message: dict)
     for player_id, connection in room.connections.items():
         if player_id == exclude_player_id:
             continue  # Skip the excluded player
+        
+        # Check if connection is still open before sending
+        if connection.client_state.name != "CONNECTED":
+            logger.warning(f"Skipping message to {player_id} - connection closed")
+            disconnected.append(player_id)
+            continue
+            
         try:
             await connection.send_text(message_str)
         except Exception as e:

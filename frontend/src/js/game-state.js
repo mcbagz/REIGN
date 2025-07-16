@@ -357,6 +357,7 @@ class GameState {
             };
             
             this.tiles.set(`${pos.x},${pos.y}`, capital);
+            console.log(`Placed capital at (${pos.x}, ${pos.y}) for player ${capital.owner}`);
             
             // Set capital position for player
             if (capital.owner !== null) {
@@ -718,6 +719,8 @@ class GameState {
         const tile = this.tiles.get(tileKey);
         if (!tile) {
             console.error(`Tile ${tileKey} not found`);
+            console.log('Available tiles:', Array.from(this.tiles.keys()));
+            console.log('Total tiles in map:', this.tiles.size);
             return false;
         }
         
@@ -825,6 +828,75 @@ class GameState {
         
         // Update unit movements
         // This will be handled by the UnitSystem
+    }
+    
+    // Update from server game state
+    updateFromServer(serverState) {
+        try {
+            console.log('Updating game state from server:', serverState);
+            
+            // Update basic game properties
+            if (serverState.currentPlayer !== undefined) {
+                this.currentPlayer = serverState.currentPlayer;
+            }
+            
+            if (serverState.gamePhase !== undefined) {
+                this.gamePhase = serverState.gamePhase;
+            }
+            
+            if (serverState.winner !== undefined) {
+                this.winner = serverState.winner;
+            }
+            
+            if (serverState.gameTime !== undefined) {
+                this.gameTime = serverState.gameTime;
+            }
+            
+            // Update players if provided
+            if (serverState.players && Array.isArray(serverState.players)) {
+                this.players.clear();
+                serverState.players.forEach(player => {
+                    this.players.set(player.id, player);
+                });
+            }
+            
+            // Update tiles if provided
+            if (serverState.tiles && Array.isArray(serverState.tiles)) {
+                console.log('Updating tiles from server:', serverState.tiles.length, 'tiles');
+                console.log('Tiles before server update:', this.tiles.size);
+                this.tiles.clear();
+                serverState.tiles.forEach(tile => {
+                    const key = `${tile.x},${tile.y}`;
+                    this.tiles.set(key, tile);
+                });
+                console.log('Tiles after server update:', this.tiles.size);
+                console.log('Tile keys:', Array.from(this.tiles.keys()));
+            } else {
+                console.log('No tiles received from server or tiles is not an array');
+            }
+            
+            // Update units if provided
+            if (serverState.units && Array.isArray(serverState.units)) {
+                this.units.clear();
+                serverState.units.forEach(unit => {
+                    this.units.set(unit.id, unit);
+                });
+            }
+            
+            // Update workers if provided
+            if (serverState.workers && Array.isArray(serverState.workers)) {
+                this.workers.clear();
+                serverState.workers.forEach(worker => {
+                    this.workers.set(worker.id, worker);
+                });
+            }
+            
+            // Emit event for UI updates
+            this.emitEvent('gameStateUpdated', { serverState });
+            
+        } catch (error) {
+            console.error('Error updating game state from server:', error);
+        }
     }
     
     // Serialization

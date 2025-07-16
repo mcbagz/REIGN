@@ -261,6 +261,12 @@ class Room:
         # Send to all connected players
         disconnected = []
         for player_id, connection in self.connections.items():
+            # Check if connection is still open before sending
+            if connection.client_state.name != "CONNECTED":
+                print(f"Skipping broadcast to {player_id} - connection closed")
+                disconnected.append(player_id)
+                continue
+                
             try:
                 await connection.send_text(message_str)
             except Exception as e:

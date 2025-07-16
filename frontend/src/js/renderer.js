@@ -293,9 +293,13 @@ class GameRenderer {
         event.preventDefault();
         event.stopPropagation();
         
-        // Get tile data from game state
-        const tileKey = `${x},${y}`;
-        const tile = this.gameState?.tiles?.get(tileKey);
+        // Get tile data from game state using the game instance
+        const game = window.game;
+        let tile = null;
+        
+        if (game && game.gameState) {
+            tile = game.gameState.getTile(x, y);
+        }
         
         // Dispatch custom event for unit commands
         window.dispatchEvent(new CustomEvent('tile:rightclick', {
@@ -312,16 +316,20 @@ class GameRenderer {
             event.preventDefault();
         }
         
-        // Get tile data from game state
-        const tileKey = `${x},${y}`;
-        const tile = this.gameState?.tiles?.get(tileKey);
+        // Get tile data from game state using the game instance
+        const game = window.game;
+        let tile = null;
         
-        if (tile) {
-            // Dispatch custom event
-            window.dispatchEvent(new CustomEvent('tile:doubleclick', {
-                detail: { x, y, tile, event }
-            }));
+        if (game && game.gameState) {
+            tile = game.gameState.getTile(x, y);
         }
+        
+        console.log('Tile found for double-click:', tile);
+        
+        // Always dispatch the event, even if no tile is found
+        window.dispatchEvent(new CustomEvent('tile:doubleclick', {
+            detail: { x, y, tile, event }
+        }));
     }
     
     renderTile(x, y, tileData) {
@@ -464,6 +472,45 @@ class GameRenderer {
         }
     }
     
+    // Update renderer with game state
+    update(gameState) {
+        try {
+            console.log('Updating renderer with game state:', gameState);
+            
+            // Store reference to game state
+            this.gameState = gameState;
+            
+            // Render tiles if available
+            if (gameState.tiles && gameState.tiles.length > 0) {
+                const tilesMap = new Map();
+                gameState.tiles.forEach(tile => {
+                    const key = `${tile.x},${tile.y}`;
+                    tilesMap.set(key, tile);
+                });
+                this.renderTiles(tilesMap);
+            }
+            
+            // Render units if available
+            if (gameState.units && gameState.units.length > 0) {
+                this.renderUnits(gameState.units);
+            }
+            
+            // Render workers if available
+            if (gameState.workers && gameState.workers.length > 0) {
+                this.renderWorkers(gameState.workers);
+            }
+            
+            // Render UI elements
+            this.renderUI(gameState);
+            
+            // Present the rendered frame
+            this.present();
+            
+        } catch (error) {
+            console.error('Error updating renderer:', error);
+        }
+    }
+    
     renderTiles(tiles) {
         tiles.forEach((tileData, position) => {
             const [x, y] = position.split(',').map(Number);
@@ -472,7 +519,45 @@ class GameRenderer {
     }
     
     renderUnits(units) {
-        // TODO: Render units on tiles
+        console.log('Rendering units:', units.length);
+        
+        // Clear existing unit sprites
+        if (this.unitContainer) {
+            this.unitContainer.removeChildren();
+        } else {
+            this.unitContainer = new PIXI.Container();
+            this.viewport.addChild(this.unitContainer);
+        }
+        
+        // Render each unit
+        units.forEach(unit => {
+            console.log('Unit:', unit);
+            
+            // Create a simple colored circle for the unit
+            const unitSprite = new PIXI.Graphics();
+            unitSprite.beginFill(unit.owner === 0 ? 0x00ff00 : 0xff0000); // Green for player 0, red for others
+            unitSprite.drawCircle(0, 0, 15);
+            unitSprite.endFill();
+            
+            // Position the unit sprite
+            unitSprite.x = unit.x * GameConfig.TILE_SIZE + GameConfig.TILE_SIZE / 2;
+            unitSprite.y = unit.y * GameConfig.TILE_SIZE + GameConfig.TILE_SIZE / 2;
+            
+            // Make it interactive
+            unitSprite.interactive = true;
+            unitSprite.cursor = 'pointer';
+            
+            // Add click handler
+            unitSprite.on('click', (event) => {
+                console.log('Unit clicked:', unit);
+                // Dispatch unit click event
+                window.dispatchEvent(new CustomEvent('unit:click', {
+                    detail: { unit: unit, event: event }
+                }));
+            });
+            
+            this.unitContainer.addChild(unitSprite);
+        });
     }
     
     renderWorkers(workers) {

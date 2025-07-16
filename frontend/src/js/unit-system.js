@@ -1,6 +1,6 @@
 // Unit System Class - Complete Implementation with PixiJS Rendering
 class UnitSystem {
-    constructor(gameState, renderer) {
+    constructor(gameState, renderer, tweenSystem = null) {
         if (!gameState) {
             throw new Error('UnitSystem requires gameState parameter');
         }
@@ -10,6 +10,7 @@ class UnitSystem {
         
         this.gameState = gameState;
         this.renderer = renderer;
+        this.tweenSystem = tweenSystem;
         this.initialized = false;
         this.trainingQueue = [];
         
@@ -19,7 +20,7 @@ class UnitSystem {
         this.unitTextures = new Map(); // unitType -> PIXI.Texture
         this.healthBars = new Map(); // unitId -> PIXI.Container
         
-        // Animation system
+        // Animation system (fallback for when tween system is not available)
         this.animations = new Map(); // unitId -> animation data
         this.deadUnits = new Set(); // Units pending removal
         
@@ -27,7 +28,7 @@ class UnitSystem {
         this.combatEffects = [];
         this.effectPool = [];
         
-        console.log('UnitSystem created successfully');
+        console.log('UnitSystem created successfully' + (tweenSystem ? ' with TweenSystem' : ''));
     }
     
     async init() {
@@ -267,19 +268,36 @@ class UnitSystem {
         const endX = newPosition.x * GameConfig.TILE_SIZE;
         const endY = newPosition.y * GameConfig.TILE_SIZE;
         
-        // Create movement animation
-        const animation = {
-            unitId,
-            startX,
-            startY,
-            endX,
-            endY,
-            duration,
-            elapsed: 0,
-            type: 'movement'
-        };
-        
-        this.animations.set(unitId, animation);
+        // Use tween system if available, otherwise fallback to old animation
+        if (this.tweenSystem) {
+            // Use smooth tween animation
+            this.tweenSystem.tweenUnitPosition(
+                unitContainer, 
+                endX, 
+                endY, 
+                unitId,
+                {
+                    onComplete: () => {
+                        // Animation complete
+                        console.log(`Unit ${unitId} movement animation completed`);
+                    }
+                }
+            );
+        } else {
+            // Fallback to old animation system
+            const animation = {
+                unitId,
+                startX,
+                startY,
+                endX,
+                endY,
+                duration,
+                elapsed: 0,
+                type: 'movement'
+            };
+            
+            this.animations.set(unitId, animation);
+        }
         
         // Update unit data
         if (unitContainer.unitData) {
