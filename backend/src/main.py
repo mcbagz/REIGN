@@ -257,6 +257,24 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
     room.start_game_loop()
     
     try:
+        # Get the player's numeric ID from the room
+        player_numeric_id = None
+        for player in room.players.values():
+            if player.name == player_id:
+                player_numeric_id = player.id
+                break
+        
+        # Send player identity first
+        await websocket.send_text(orjson.dumps({
+            "type": "player_identity",
+            "payload": {
+                "player_id": player_numeric_id,
+                "player_name": player_id,
+                "room_id": room_id
+            },
+            "timestamp": datetime.now().isoformat()
+        }).decode())
+        
         # Send initial game state
         initial_payload = room.state.model_dump() if room.state else {}
         await websocket.send_text(orjson.dumps({
@@ -401,96 +419,219 @@ async def handle_message(room: Room, player_id: str, message: dict, websocket: W
         await send_error_response(websocket, "Internal server error", "INTERNAL_ERROR")
 
 async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: WebSocket):
-    """Handle tile placement"""
+    """Handle tile placement command from a player"""
     try:
-        x = data.get("x")
-        y = data.get("y") 
-        tile_type = data.get("tile_type")
+        # Validate required fields
+        required_fields = ["x", "y", "tile_type"]
+        for field in required_fields:
+            if field not in data:
+                await send_error_response(websocket, f"Missing required field: {field}", "MISSING_FIELD")
+                return
+
+        x = data["x"]
+        y = data["y"]
+        tile_type = data["tile_type"]
         
-        if x is None or y is None or tile_type is None:
-            raise ValueError("Missing required fields: x, y, tile_type")
-        
-        # Validate game state exists and it's the player's turn
-        if room.state is None:
-            raise ValueError("Game not started yet")
+        # Validate coordinates
+        if not isinstance(x, int) or not isinstance(y, int):
+            await send_error_response(websocket, "Coordinates must be integers", "INVALID_COORDINATES")
+            return
             
-        current_player = room.state.players[room.state.current_player]
-        if current_player.name != player_id:
-            raise ValueError("Not your turn")
-        
-        # Validate tile type is available
-        if room.state.current_tile_options and tile_type not in room.state.current_tile_options:
-            raise ValueError(f"Tile type {tile_type} not available in current options")
-        
-        # Check if position is valid (within bounds)
-        if not (0 <= x < room.state.game_settings.map_size and 0 <= y < room.state.game_settings.map_size):
-            raise ValueError(f"Position ({x}, {y}) is outside map bounds")
-        
+        if x < 0 or x >= room.state.game_settings.map_size or y < 0 or y >= room.state.game_settings.map_size:
+            await send_error_response(websocket, "Coordinates out of bounds", "COORDINATES_OUT_OF_BOUNDS")
+            return
+
+        # Check if it's the player's turn
+        if room.state.current_player != next(i for i, p in enumerate(room.state.players) if p.name == player_id):
+            await send_error_response(websocket, "Not your turn", "NOT_YOUR_TURN")
+            return
+
         # Check if position is already occupied
-        for existing_tile in room.state.tiles:
-            if existing_tile.x == x and existing_tile.y == y:
-                raise ValueError(f"Position ({x}, {y}) is already occupied")
-        
-        # Validate tile placement rules (adjacent to existing tiles, except for first tile)
-        if len(room.state.tiles) > 0:
-            adjacent_found = False
-            for existing_tile in room.state.tiles:
-                if abs(existing_tile.x - x) + abs(existing_tile.y - y) == 1:
-                    adjacent_found = True
-                    break
-            if not adjacent_found:
-                raise ValueError("New tile must be adjacent to existing tiles")
-        
-        # Create new tile using proper model
-        from .models.tile import Resources, TileMetadata
+        if any(tile.x == x and tile.y == y for tile in room.state.tiles):
+            await send_error_response(websocket, "Position already occupied", "POSITION_OCCUPIED")
+            return
+
+        # Find the current player
+        current_player = None
+        for player in room.state.players:
+            if player.name == player_id:
+                current_player = player
+                break
+
+        if not current_player:
+            await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
+            return
+
+        # Validate tile type is in current options
+        if not room.state.current_tile_options or tile_type not in room.state.current_tile_options:
+            await send_error_response(websocket, "Invalid tile type for current options", "INVALID_TILE_TYPE")
+            return
+
+        # Check adjacency rules (must be adjacent to at least one existing tile)
+        if not _has_adjacent_tile(x, y, room.state.tiles):
+            await send_error_response(websocket, "Tile must be adjacent to existing tiles", "NO_ADJACENT_TILES")
+            return
+
+        # Check resource costs
+        tile_cost = _get_tile_cost(tile_type)
+        if not _can_afford_tile(current_player, tile_cost):
+            await send_error_response(websocket, "Insufficient resources", "INSUFFICIENT_RESOURCES")
+            return
+
+        # Deduct resources
+        current_player.resources["gold"] -= tile_cost["gold"]
+        current_player.resources["food"] -= tile_cost["food"]
+        current_player.resources["faith"] -= tile_cost["faith"]
+
+        # Create new tile with proper properties
+        tile_properties = _get_tile_properties(tile_type)
         new_tile = Tile(
             id=f"{x},{y}",
             type=TileType(tile_type),
             x=x,
             y=y,
-            edges=["field", "field", "field", "field"],  # Default edges
-            hp=100,
-            max_hp=100,
+            edges=tile_properties["edges"],
+            hp=tile_properties["hp"],
+            max_hp=tile_properties["hp"],
             owner=current_player.id,
-            resources=Resources(gold=1, food=1, faith=0),  # Default resources
+            resources=tile_properties["resources"],
             placed_at=datetime.now().timestamp(),
-            metadata=TileMetadata(can_train=(tile_type == "barracks"))
+            metadata=tile_properties["metadata"]
         )
-        
+
         # Add to game state
         room.state.tiles.append(new_tile)
         room.state.last_update = datetime.now().timestamp()
-        
+
         # Update current player's stats
         current_player.stats.tiles_placed += 1
-        
-        # Generate new tile options for next turn
-        room.state.current_tile_options = generate_tile_options(room.state.available_tiles)
-        
+
+        # Generate new tile options for next turn (this will be replaced by tile offers system)
+        # room.state.current_tile_options = generate_tile_options(room.state.available_tiles)
+
         # Advance turn to next player
         room.state.current_player = (room.state.current_player + 1) % len(room.state.players)
         room.state.turn_number += 1
-    
-    # Broadcast to all players in room
+        room.state.turn_time_remaining = room.state.game_settings.turn_duration
+
+        # Broadcast tile placement to all players in room
         await broadcast_to_room(room, {
             "type": "tile_placed",
             "payload": {
                 "player_id": player_id,
                 "tile": new_tile.model_dump(),
-                "next_player": room.state.current_player
+                "next_player": room.state.current_player,
+                "new_resources": current_player.resources
             },
             "timestamp": datetime.now().isoformat()
         })
+        
+        # Broadcast updated tiles to all clients
+        room._broadcast_tiles_update()
+        
+        # Generate new tile offers for the next player
+        room._generate_tile_offers_for_player(room.state.current_player)
 
         logger.info(f"Tile placed by {player_id} at ({x}, {y})")
-        
+
     except Exception as e:
         logger.error(f"Error placing tile: {e}")
-        await websocket.send_text(orjson.dumps({
-            "type": "error",
-            "payload": {"message": f"Tile placement failed: {str(e)}"},
-            "timestamp": datetime.now().isoformat()
-        }).decode())
+        await send_error_response(websocket, f"Tile placement failed: {str(e)}", "TILE_PLACEMENT_ERROR")
+
+def _has_adjacent_tile(x: int, y: int, tiles) -> bool:
+    """Check if position has at least one adjacent tile."""
+    if not tiles:  # First tile can be placed anywhere
+        return True
+        
+    adjacent_positions = [
+        (x - 1, y),  # West
+        (x + 1, y),  # East
+        (x, y - 1),  # North
+        (x, y + 1)   # South
+    ]
+    
+    for tile in tiles:
+        if (tile.x, tile.y) in adjacent_positions:
+            return True
+    return False
+
+def _get_tile_cost(tile_type: str) -> dict:
+    """Get the resource cost for placing a tile."""
+    tile_costs = {
+        "field": {"gold": 10, "food": 0, "faith": 0},
+        "city": {"gold": 50, "food": 20, "faith": 0},
+        "monastery": {"gold": 30, "food": 10, "faith": 20},
+        "barracks": {"gold": 80, "food": 40, "faith": 0},
+        "watchtower": {"gold": 60, "food": 30, "faith": 10},
+        "mine": {"gold": 40, "food": 20, "faith": 0},
+        "orchard": {"gold": 30, "food": 10, "faith": 0},
+        "marsh": {"gold": 5, "food": 0, "faith": 0}
+    }
+    
+    return tile_costs.get(tile_type, {"gold": 20, "food": 10, "faith": 0})
+
+def _can_afford_tile(player, cost: dict) -> bool:
+    """Check if player can afford the tile cost."""
+    return (player.resources["gold"] >= cost["gold"] and
+            player.resources["food"] >= cost["food"] and
+            player.resources["faith"] >= cost["faith"])
+
+def _get_tile_properties(tile_type: str) -> dict:
+    """Get the properties for a tile type."""
+    from .models.tile import Resources, TileMetadata
+    
+    properties = {
+        "field": {
+            "edges": ["field", "field", "field", "field"],
+            "hp": 30,
+            "resources": Resources(gold=0, food=10, faith=0),
+            "metadata": TileMetadata(can_train=False, worker_capacity=1)
+        },
+        "city": {
+            "edges": ["city", "city", "city", "city"],
+            "hp": 100,
+            "resources": Resources(gold=20, food=20, faith=0),
+            "metadata": TileMetadata(can_train=True, worker_capacity=2)
+        },
+        "monastery": {
+            "edges": ["monastery", "monastery", "monastery", "monastery"],
+            "hp": 80,
+            "resources": Resources(gold=0, food=0, faith=30),
+            "metadata": TileMetadata(can_train=False, worker_capacity=1)
+        },
+        "barracks": {
+            "edges": ["barracks", "barracks", "barracks", "barracks"],
+            "hp": 120,
+            "resources": Resources(gold=0, food=0, faith=0),
+            "metadata": TileMetadata(can_train=True, worker_capacity=0)
+        },
+        "watchtower": {
+            "edges": ["watchtower", "watchtower", "watchtower", "watchtower"],
+            "hp": 150,
+            "resources": Resources(gold=0, food=0, faith=0),
+            "metadata": TileMetadata(can_train=False, worker_capacity=0, defense_bonus=0.25)
+        },
+        "mine": {
+            "edges": ["mine", "mine", "mine", "mine"],
+            "hp": 60,
+            "resources": Resources(gold=40, food=0, faith=0),
+            "metadata": TileMetadata(can_train=False, worker_capacity=0)
+        },
+        "orchard": {
+            "edges": ["orchard", "orchard", "orchard", "orchard"],
+            "hp": 60,
+            "resources": Resources(gold=0, food=40, faith=0),
+            "metadata": TileMetadata(can_train=False, worker_capacity=0)
+        },
+        "marsh": {
+            "edges": ["marsh", "marsh", "marsh", "marsh"],
+            "hp": 20,
+            "resources": Resources(gold=0, food=0, faith=0),
+            "metadata": TileMetadata(can_train=False, worker_capacity=0, speed_multiplier=0.3)
+        }
+    }
+    
+    return properties.get(tile_type, properties["field"])
 
 async def handle_place_worker(room: Room, player_id: str, data: dict, websocket: WebSocket):
     """Handle worker placement"""
@@ -583,19 +724,36 @@ async def handle_place_worker(room: Room, player_id: str, data: dict, websocket:
         }).decode())
 
 async def handle_train_unit(room: Room, player_id: str, data: dict, websocket: WebSocket):
-    """Handle unit training"""
+    """Handle unit training command from a player"""
     try:
-        unit_type = data.get("unit_type")
-        tile_id = data.get("tile_id")
+        # Validate required fields
+        required_fields = ["unit_type", "tile_id"]
+        for field in required_fields:
+            if field not in data:
+                await send_error_response(websocket, f"Missing required field: {field}", "MISSING_FIELD")
+                return
+
+        unit_type = data["unit_type"]
+        tile_id = data["tile_id"]
         
-        if not unit_type or not tile_id:
-            raise ValueError("Missing required fields: unit_type, tile_id")
+        # Validate unit type
+        valid_unit_types = ["infantry", "archer", "knight", "siege"]
+        if unit_type not in valid_unit_types:
+            await send_error_response(websocket, f"Invalid unit type: {unit_type}", "INVALID_UNIT_TYPE")
+            return
+
+        # Find the player
+        player = None
+        for p in room.state.players:
+            if p.name == player_id:
+                player = p
+                break
         
-        # Validate game state exists
-        if room.state is None:
-            raise ValueError("Game not started yet")
-        
-        # Find the tile by ID
+        if not player:
+            await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
+            return
+
+        # Find the tile
         tile = None
         for t in room.state.tiles:
             if t.id == tile_id:
@@ -603,51 +761,59 @@ async def handle_train_unit(room: Room, player_id: str, data: dict, websocket: W
                 break
         
         if not tile:
-            raise ValueError(f"Tile {tile_id} not found")
-        
-        # Validate player ownership of tile
-        player = find_player_by_name(room.state.players, player_id)
-        if not player or tile.owner != player.id:
-            raise ValueError("You don't own this tile")
-        
+            await send_error_response(websocket, "Tile not found", "TILE_NOT_FOUND")
+            return
+
+        # Validate tile ownership
+        if tile.owner != player.id:
+            await send_error_response(websocket, "You don't own this tile", "TILE_NOT_OWNED")
+            return
+
         # Validate tile can train units
-        if not tile.metadata.can_train:
-            raise ValueError(f"Tile type {tile.type} cannot train units")
-        
-        # Validate unit type
-        try:
-            unit_type_enum = UnitType(unit_type)
-        except ValueError:
-            raise ValueError(f"Invalid unit type: {unit_type}")
-        
-        # Check if player has enough resources
-        unit_cost = get_unit_cost(unit_type_enum)
-        if (player.resources.get("gold", 0) < unit_cost.gold or
-            player.resources.get("food", 0) < unit_cost.food or
-            player.resources.get("faith", 0) < unit_cost.faith):
-            raise ValueError("Insufficient resources to train unit")
-        
+        if not tile.metadata or not tile.metadata.can_train:
+            await send_error_response(websocket, "This tile cannot train units", "TILE_CANNOT_TRAIN")
+            return
+
+        # Check unit training costs
+        unit_cost = _get_unit_cost(unit_type)
+        if not _can_afford_unit(player, unit_cost):
+            await send_error_response(websocket, "Insufficient resources", "INSUFFICIENT_RESOURCES")
+            return
+
+        # Check if tile is already training a unit
+        if any(unit.status == UnitStatus.TRAINING and unit.position.x == tile.x and unit.position.y == tile.y 
+               for unit in room.state.units):
+            await send_error_response(websocket, "Tile is already training a unit", "TILE_ALREADY_TRAINING")
+            return
+
         # Deduct resources
-        player.resources["gold"] -= unit_cost.gold
-        player.resources["food"] -= unit_cost.food
-        player.resources["faith"] -= unit_cost.faith
-        
-        # Create new unit
+        player.resources["gold"] -= unit_cost["gold"]
+        player.resources["food"] -= unit_cost["food"]
+        player.resources["faith"] -= unit_cost["faith"]
+
+        # Create training unit
+        unit_properties = _get_unit_properties(unit_type)
         new_unit = Unit.create_unit(
-            unit_type=unit_type_enum,
+            unit_type=UnitType(unit_type),
             owner=player.id,
             position=Position(x=tile.x, y=tile.y)
         )
-        # Override status for training
+        
+        # Set training status and time
         new_unit.status = UnitStatus.TRAINING
+        new_unit.metadata.training_time = unit_properties["training_time"]
+        new_unit.metadata.training_started = datetime.now().timestamp()
         
         # Add unit to game state
         room.state.units.append(new_unit)
         room.state.last_update = datetime.now().timestamp()
-        
+
         # Update player stats
         player.stats.units_created += 1
-        
+
+        # Broadcast unit update to all clients
+        room._broadcast_unit_update()
+
         # Broadcast to all players in room
         await broadcast_to_room(room, {
             "type": "unit_training_started",
@@ -656,36 +822,102 @@ async def handle_train_unit(room: Room, player_id: str, data: dict, websocket: W
                 "unit_type": unit_type,
                 "tile_id": tile_id,
                 "unit_id": new_unit.id,
-                "training_time": new_unit.metadata.training_time
+                "training_time": new_unit.metadata.training_time,
+                "new_resources": player.resources
             },
             "timestamp": datetime.now().isoformat()
         })
-        
+
         logger.info(f"Unit training started by {player_id}: {unit_type} at {tile_id}")
-        
+
     except Exception as e:
         logger.error(f"Error training unit: {e}")
-        await websocket.send_text(orjson.dumps({
-            "type": "error",
-            "payload": {"message": f"Unit training failed: {str(e)}"},
-            "timestamp": datetime.now().isoformat()
-        }).decode())
+        await send_error_response(websocket, f"Unit training failed: {str(e)}", "UNIT_TRAINING_ERROR")
+
+def _get_unit_cost(unit_type: str) -> dict:
+    """Get the resource cost for training a unit."""
+    unit_costs = {
+        "infantry": {"gold": 50, "food": 30, "faith": 0},
+        "archer": {"gold": 60, "food": 20, "faith": 10},
+        "knight": {"gold": 100, "food": 40, "faith": 20},
+        "siege": {"gold": 120, "food": 60, "faith": 30}
+    }
+    
+    return unit_costs.get(unit_type, {"gold": 50, "food": 30, "faith": 0})
+
+def _can_afford_unit(player, cost: dict) -> bool:
+    """Check if player can afford the unit cost."""
+    return (player.resources["gold"] >= cost["gold"] and
+            player.resources["food"] >= cost["food"] and
+            player.resources["faith"] >= cost["faith"])
+
+def _get_unit_properties(unit_type: str) -> dict:
+    """Get the properties for a unit type."""
+    properties = {
+        "infantry": {
+            "training_time": 30.0,  # 30 seconds
+            "hp": 100,
+            "max_hp": 100,
+            "attack": 20,
+            "defense": 15,
+            "speed": 1.0,
+            "range": 1
+        },
+        "archer": {
+            "training_time": 25.0,  # 25 seconds
+            "hp": 75,
+            "max_hp": 75,
+            "attack": 25,
+            "defense": 10,
+            "speed": 1.5,
+            "range": 2
+        },
+        "knight": {
+            "training_time": 45.0,  # 45 seconds
+            "hp": 150,
+            "max_hp": 150,
+            "attack": 30,
+            "defense": 20,
+            "speed": 0.8,
+            "range": 1
+        },
+        "siege": {
+            "training_time": 60.0,  # 60 seconds
+            "hp": 120,
+            "max_hp": 120,
+            "attack": 50,
+            "defense": 5,
+            "speed": 0.5,
+            "range": 2
+        }
+    }
+    
+    return properties.get(unit_type, properties["infantry"])
 
 async def handle_move_unit(room: Room, player_id: str, data: dict, websocket: WebSocket):
-    """Handle unit movement"""
+    """Handle unit movement command from a player"""
     try:
-        unit_id = data.get("unit_id")
-        target_x = data.get("target_x")
-        target_y = data.get("target_y")
+        # Validate required fields
+        required_fields = ["unit_id", "target_x", "target_y"]
+        for field in required_fields:
+            if field not in data:
+                await send_error_response(websocket, f"Missing required field: {field}", "MISSING_FIELD")
+                return
+
+        unit_id = data["unit_id"]
+        target_x = data["target_x"]
+        target_y = data["target_y"]
         
-        if not unit_id or target_x is None or target_y is None:
-            raise ValueError("Missing required fields: unit_id, target_x, target_y")
-        
-        # Validate game state exists
-        if room.state is None:
-            raise ValueError("Game not started yet")
-        
-        # Find the unit by ID
+        # Validate coordinates
+        if not isinstance(target_x, int) or not isinstance(target_y, int):
+            await send_error_response(websocket, "Target coordinates must be integers", "INVALID_COORDINATES")
+            return
+            
+        if target_x < 0 or target_x >= room.state.game_settings.map_size or target_y < 0 or target_y >= room.state.game_settings.map_size:
+            await send_error_response(websocket, "Target coordinates out of bounds", "COORDINATES_OUT_OF_BOUNDS")
+            return
+
+        # Find the unit
         unit = None
         for u in room.state.units:
             if u.id == unit_id:
@@ -693,71 +925,141 @@ async def handle_move_unit(room: Room, player_id: str, data: dict, websocket: We
                 break
         
         if not unit:
-            raise ValueError(f"Unit {unit_id} not found")
+            await send_error_response(websocket, "Unit not found", "UNIT_NOT_FOUND")
+            return
+
+        # Find the player
+        player = None
+        for p in room.state.players:
+            if p.name == player_id:
+                player = p
+                break
         
+        if not player:
+            await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
+            return
+
         # Validate unit ownership
-        player = find_player_by_name(room.state.players, player_id)
-        if not player or unit.owner != player.id:
-            raise ValueError("You don't own this unit")
+        if unit.owner != player.id:
+            await send_error_response(websocket, "You don't own this unit", "UNIT_NOT_OWNED")
+            return
+
+        # Validate unit can move (not training, dead, or already moving)
+        if unit.status == UnitStatus.TRAINING:
+            await send_error_response(websocket, "Unit is still training", "UNIT_TRAINING")
+            return
+        if unit.status == UnitStatus.DEAD:
+            await send_error_response(websocket, "Unit is dead", "UNIT_DEAD")
+            return
+        if unit.status == UnitStatus.MOVING:
+            await send_error_response(websocket, "Unit is already moving", "UNIT_ALREADY_MOVING")
+            return
+
+        # Check if target position is the same as current position
+        if unit.position.x == target_x and unit.position.y == target_y:
+            await send_error_response(websocket, "Unit is already at target position", "ALREADY_AT_TARGET")
+            return
+
+        # Check if target position is occupied by another unit
+        if any(other_unit.position.x == target_x and other_unit.position.y == target_y and other_unit.id != unit_id
+               for other_unit in room.state.units if other_unit.status != UnitStatus.DEAD):
+            await send_error_response(websocket, "Target position is occupied by another unit", "POSITION_OCCUPIED")
+            return
+
+        # Calculate movement distance and validate range
+        distance = abs(unit.position.x - target_x) + abs(unit.position.y - target_y)
+        max_move_distance = _get_unit_move_distance(unit.type)
         
-        # Validate unit is not already moving or dead
-        if unit.status in [UnitStatus.MOVING, UnitStatus.DEAD]:
-            raise ValueError(f"Unit is {unit.status} and cannot move")
-        
-        # Validate target position is within bounds
-        if not (0 <= target_x < room.state.game_settings.map_size and 0 <= target_y < room.state.game_settings.map_size):
-            raise ValueError(f"Target position ({target_x}, {target_y}) is outside map bounds")
-        
-        # Create pathfinder and find path
+        if distance > max_move_distance:
+            await send_error_response(websocket, f"Target too far. Max distance: {max_move_distance}", "TARGET_TOO_FAR")
+            return
+
+        # Use pathfinding to find route
         pathfinder = Pathfinder(room.state.game_settings.map_size, room.state.game_settings.map_size)
         
-        # Set terrain weights based on tiles
-        for tile in room.state.tiles:
-            weight = 1.0
-            if tile.type in [TileType.MARSH]:
-                weight = 2.0  # Marsh is harder to traverse
-            elif tile.type in [TileType.FIELD]:
-                weight = 0.8  # Field is easier to traverse
-            pathfinder.set_terrain_weight(Position(x=tile.x, y=tile.y), weight)
+        # Add obstacles (other units and impassable tiles)
+        obstacles = []
+        for other_unit in room.state.units:
+            if other_unit.id != unit_id and other_unit.status != UnitStatus.DEAD:
+                obstacles.append((other_unit.position.x, other_unit.position.y))
         
-        # Find path from unit current position to target
-        path = pathfinder.find_path(unit.position, Position(x=target_x, y=target_y))
+        # Add impassable tiles (if any)
+        for tile in room.state.tiles:
+            if tile.metadata and tile.metadata.speed_multiplier == 0:
+                obstacles.append((tile.x, tile.y))
+        
+        # Find path
+        path = pathfinder.find_path(
+            (unit.position.x, unit.position.y),
+            (target_x, target_y),
+            obstacles
+        )
         
         if not path:
-            raise ValueError("No valid path to target position")
+            await send_error_response(websocket, "No valid path to target", "NO_PATH")
+            return
+
+        # Update unit position and status
+        unit.position.x = target_x
+        unit.position.y = target_y
+        unit.status = UnitStatus.IDLE  # Unit completes movement instantly for now
         
-        # Update unit status and target
-        from .models.unit import Target
-        unit.status = UnitStatus.MOVING
-        unit.target = Target(
-            type="tile", 
-            id=f"{target_x},{target_y}", 
-            position=Position(x=target_x, y=target_y)
-        )
-        unit.last_action = datetime.now().timestamp()
+        # Calculate movement cost (could be based on terrain)
+        movement_cost = _calculate_movement_cost(unit, path, room.state.tiles)
         
-        # Broadcast to all players in room
+        # Update last update time
+        room.state.last_update = datetime.now().timestamp()
+
+        # Broadcast movement to all players
         await broadcast_to_room(room, {
-            "type": "unit_move_started",
+            "type": "unit_moved",
             "payload": {
                 "player_id": player_id,
                 "unit_id": unit_id,
-                "target_x": target_x,
-                "target_y": target_y,
-                "path": [pos.model_dump() for pos in path]
+                "from_x": path[0][0],
+                "from_y": path[0][1],
+                "to_x": target_x,
+                "to_y": target_y,
+                "path": path,
+                "movement_cost": movement_cost
             },
             "timestamp": datetime.now().isoformat()
         })
-        
-        logger.info(f"Unit movement started by {player_id}: {unit_id} to ({target_x}, {target_y})")
-        
+
+        logger.info(f"Unit moved by {player_id}: {unit_id} to ({target_x}, {target_y})")
+
     except Exception as e:
         logger.error(f"Error moving unit: {e}")
-        await websocket.send_text(orjson.dumps({
-            "type": "error",
-            "payload": {"message": f"Unit movement failed: {str(e)}"},
-            "timestamp": datetime.now().isoformat()
-        }).decode())
+        await send_error_response(websocket, f"Unit movement failed: {str(e)}", "UNIT_MOVEMENT_ERROR")
+
+def _get_unit_move_distance(unit_type: str) -> int:
+    """Get the maximum movement distance for a unit type."""
+    move_distances = {
+        "infantry": 3,
+        "archer": 4,
+        "knight": 2,
+        "siege": 1
+    }
+    
+    return move_distances.get(unit_type, 2)
+
+def _calculate_movement_cost(unit, path, tiles) -> int:
+    """Calculate the movement cost based on terrain."""
+    cost = len(path) - 1  # Base cost is path length
+    
+    # Add terrain modifiers
+    for x, y in path[1:]:  # Skip starting position
+        # Find tile at position
+        tile = None
+        for t in tiles:
+            if t.x == x and t.y == y:
+                tile = t
+                break
+        
+        if tile and tile.metadata and tile.metadata.speed_multiplier < 1.0:
+            cost += int(1 / tile.metadata.speed_multiplier)
+    
+    return cost
 
 async def broadcast_to_room(room: Room, message: dict):
     """Broadcast message to all connections in a room"""

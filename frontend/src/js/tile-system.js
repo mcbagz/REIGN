@@ -457,6 +457,29 @@ class TileSystem {
         });
     }
     
+    updateTileOffers(tileOffers, isMyTurn = false) {
+        console.log('Updating tile offers from server:', tileOffers, 'isMyTurn:', isMyTurn);
+        
+        // Store the tile offers
+        this.currentTileOptions = tileOffers;
+        
+        // Store turn information
+        this.isMyTurn = isMyTurn;
+        
+        // Show the tile selection modal (all players can see it)
+        this.showTileOptions();
+        
+        // Only add tiles to bank if it's the player's turn
+        if (isMyTurn) {
+            tileOffers.forEach(tile => {
+                this.addToTileBank(tile);
+            });
+        } else {
+            // For non-active players, just show the offers as preview
+            console.log('Not your turn - showing tile offers as preview only');
+        }
+    }
+
     closeModal() {
         if (this.modal) {
             this.modal.classList.add('hidden');

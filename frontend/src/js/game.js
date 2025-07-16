@@ -150,6 +150,23 @@ class Game {
         // Create initial game state based on GDD
         console.log('Setting up initial game state...');
         
+        // In multiplayer mode, wait for server to send initial state
+        if (this.config.mode === 'multiplayer') {
+            console.log('Multiplayer mode: waiting for server state...');
+            // Initialize basic game state structure but don't create map
+            this.gameState.initializePlayers(this.config.playerCount);
+            
+            // Set up resource manager but don't start it
+            this.resourceManager.initializeResources();
+            
+            // Don't start auto-save in multiplayer
+            console.log('Multiplayer mode: skipping local state initialization');
+            return;
+        }
+        
+        // Single-player mode: initialize everything locally
+        console.log('Single-player mode: initializing local state...');
+        
         // Initialize players
         this.gameState.initializePlayers(this.config.playerCount);
         
@@ -400,21 +417,106 @@ class Game {
         });
         
         // Handle game state updates
-        this.websocketClient.on('state', (gameState) => {
-            console.log('Received game state update');
+        this.websocketClient.on('state', (payload) => {
+            console.log('Received game state update:', payload);
+            
+            // Handle resource updates specifically
+            if (payload.resources) {
+                this.handleResourceUpdate(payload.resources);
+            }
+            
+            // Handle tile offers
+            if (payload.tileOffer) {
+                this.handleTileOfferUpdate(payload.tileOffer);
+            }
+            
+            // Handle tile updates (placed tiles)
+            if (payload.tiles) {
+                this.handleTileUpdate(payload.tiles);
+            }
+            
+            // Handle unit updates
+            if (payload.units) {
+                this.handleUnitUpdate(payload.units);
+            }
+            
+            // Handle worker updates
+            if (payload.workers) {
+                this.handleWorkerUpdate(payload.workers);
+            }
+            
+            // Handle full game state updates
+            if (payload.current_player !== undefined || payload.tiles || payload.players) {
+                this.handleGameStateUpdate(payload);
+            }
             
             // Update cycle timer based on players alive
-            if (gameState.playersAlive !== undefined) {
-                this.cycleTimer.updatePlayersAlive(gameState.playersAlive);
+            if (payload.playersAlive !== undefined) {
+                this.cycleTimer.updatePlayersAlive(payload.playersAlive);
             }
             
             // Update debug overlay tick information
-            if (this.debugOverlay && gameState.tick !== undefined) {
-                this.debugOverlay.updateTick(gameState.tick);
+            if (this.debugOverlay && payload.tick !== undefined) {
+                this.debugOverlay.updateTick(payload.tick);
             }
+        });
+        
+        // Handle player identity (sent first on connection)
+        this.websocketClient.on('player_identity', (identityData) => {
+            console.log('Received player identity:', identityData);
+            this.myPlayerId = identityData.player_id;
+            this.myPlayerName = identityData.player_name;
+            console.log(`I am Player ${this.myPlayerId} (${this.myPlayerName})`);
             
-            // Handle any other state-based UI updates
+            // Update UI to show correct player identity
+            this.updatePlayerDisplay();
+        });
+        
+        // Handle initial game state (sent as "game_state" type)
+        this.websocketClient.on('game_state', (gameState) => {
+            console.log('Received initial game state from server');
             this.handleGameStateUpdate(gameState);
+        });
+        
+        // Handle tile placement events
+        this.websocketClient.on('tile_placed', (tileData) => {
+            console.log('Received tile placed event:', tileData);
+            
+            if (tileData.tile) {
+                // Add the tile to the game state
+                const key = `${tileData.tile.x},${tileData.tile.y}`;
+                this.gameState.tiles.set(key, tileData.tile);
+                
+                // Render the new tile
+                if (this.renderer) {
+                    this.renderer.renderTile(tileData.tile.x, tileData.tile.y, tileData.tile);
+                }
+                
+                // Update UI with new turn information
+                if (tileData.next_player !== undefined) {
+                    this.uiManager.updateCurrentPlayerDisplay(tileData.next_player);
+                }
+                
+                // Update resources if available
+                if (tileData.new_resources) {
+                    this.uiManager.updateResourceDisplay(tileData.new_resources);
+                }
+                
+                // If this was our tile placement, remove from bank and exit placement mode
+                if (tileData.player_id === this.myPlayerName && this.selectedTileForPlacement) {
+                    // Remove the placed tile from tile bank
+                    this.tileSystem.removeTileFromBank(this.selectedTileForPlacement);
+                    
+                    // Exit placement mode
+                    this.exitPlacementMode();
+                    
+                    // Show success message
+                    this.toastManager.showSuccess('Tile placed successfully');
+                } else {
+                    // Show toast notification for other players
+                    this.toastManager.showInfo(`Tile placed at (${tileData.tile.x}, ${tileData.tile.y})`);
+                }
+            }
         });
         
         // Handle player action messages
@@ -471,12 +573,150 @@ class Game {
             this.gameState.updateFromServer(gameState);
         }
         
+        // In multiplayer mode, render tiles from server state
+        if (this.config.mode === 'multiplayer' && this.renderer) {
+            if (gameState.tiles && gameState.tiles.length > 0) {
+                console.log('Rendering tiles from server state:', gameState.tiles.length);
+                
+                // Convert server tiles array to client Map format for rendering
+                const tileMap = new Map();
+                gameState.tiles.forEach(tile => {
+                    const key = `${tile.x},${tile.y}`;
+                    tileMap.set(key, tile);
+                });
+                
+                // Render tiles
+                this.renderer.renderTiles(tileMap);
+            }
+        }
+        
         // Update UI components
         this.uiManager.updateFromGameState(gameState);
         
         // Update renderer
         if (this.renderer) {
             this.renderer.update(gameState);
+        }
+    }
+    
+    handleResourceUpdate(resourceData) {
+        console.log('Handling resource update:', resourceData);
+        
+        // Update resource display for the correct player
+        if (this.resourceManager && this.myPlayerId !== undefined) {
+            // Get resources for our player
+            const myResources = resourceData[this.myPlayerId.toString()];
+            
+            if (myResources) {
+                console.log(`Updating resources for Player ${this.myPlayerId}:`, myResources);
+                this.resourceManager.updateResources(myResources);
+            } else {
+                console.warn(`No resources found for player ${this.myPlayerId}`);
+            }
+        }
+    }
+    
+    updatePlayerDisplay() {
+        // Update any UI elements that show the player's identity
+        const playerDisplay = document.getElementById('player-display');
+        if (playerDisplay && this.myPlayerId !== undefined) {
+            playerDisplay.textContent = `Player ${this.myPlayerId + 1}`;
+        }
+        
+        // Update any other player-specific UI elements
+        const playerInfo = document.querySelector('.player-info');
+        if (playerInfo && this.myPlayerId !== undefined) {
+            playerInfo.textContent = `You are Player ${this.myPlayerId + 1}`;
+        }
+    }
+    
+    handleTileOfferUpdate(tileOfferData) {
+        console.log('Handling tile offer update:', tileOfferData);
+        
+        // Enable tile system if it's not already started
+        if (!this.tileSystem.initialized) {
+            this.tileSystem.start();
+        }
+        
+        // Update tile system with offers
+        if (tileOfferData.tiles && Array.isArray(tileOfferData.tiles)) {
+            // Pass the isMyTurn flag to tile system
+            this.tileSystem.updateTileOffers(tileOfferData.tiles, tileOfferData.isMyTurn);
+        }
+    }
+    
+    handleTileUpdate(tilesData) {
+        console.log('Handling tile update:', tilesData);
+        
+        // Update game state with tiles
+        if (this.gameState && Array.isArray(tilesData)) {
+            // Clear existing tiles
+            this.gameState.tiles.clear();
+            
+            // Add new tiles
+            tilesData.forEach(tile => {
+                const key = `${tile.x},${tile.y}`;
+                this.gameState.tiles.set(key, tile);
+            });
+            
+            // Render tiles on the map
+            if (this.renderer) {
+                this.renderer.renderTiles(this.gameState.tiles);
+            }
+            
+            console.log(`Updated ${tilesData.length} tiles from server`);
+        }
+    }
+    
+    handleUnitUpdate(unitData) {
+        console.log('Handling unit update:', unitData);
+        
+        // Update game state units
+        if (this.gameState) {
+            // Clear existing units and add new ones
+            this.gameState.units.clear();
+            
+            // Handle both object format and array format
+            if (Array.isArray(unitData)) {
+                unitData.forEach(unit => {
+                    this.gameState.units.set(unit.id, unit);
+                });
+            } else {
+                // Object format: {unitId: unitData}
+                Object.keys(unitData).forEach(unitId => {
+                    this.gameState.units.set(unitId, unitData[unitId]);
+                });
+            }
+            
+            // Update renderer with new units
+            if (this.renderer) {
+                this.renderer.renderUnits(Array.from(this.gameState.units.values()));
+            }
+        }
+    }
+    
+    handleWorkerUpdate(workerData) {
+        console.log('Handling worker update:', workerData);
+        
+        // Update game state workers
+        if (this.gameState) {
+            // Clear existing workers and add new ones
+            this.gameState.workers.clear();
+            
+            // Handle both object format and array format
+            if (Array.isArray(workerData)) {
+                workerData.forEach(worker => {
+                    this.gameState.workers.set(worker.id, worker);
+                });
+            } else {
+                // Object format: {workerId: workerData}
+                Object.keys(workerData).forEach(workerId => {
+                    this.gameState.workers.set(workerId, workerData[workerId]);
+                });
+            }
+            
+            // Update UI with new worker state
+            this.uiManager.updateWorkerDisplay(this.gameState);
         }
     }
     
@@ -609,23 +849,28 @@ class Game {
         const gridX = Math.floor(worldCoords.x / GameConfig.TILE_SIZE);
         const gridY = Math.floor(worldCoords.y / GameConfig.TILE_SIZE);
         
-        // Attempt to place the tile
-        const success = this.gameState.placeTile(gridX, gridY, this.draggedTile);
-        
-        if (success) {
-            // Remove from tile bank
-            this.tileSystem.removeTileFromBank(this.draggedTile);
-            
-            // Clear bank selection
-            this.tileSystem.clearBankSelection();
-            
-            // Exit placement mode if active
-            if (this.isPlacementMode) {
-                this.exitPlacementMode();
-            }
+        // In multiplayer mode, send tile placement command to server
+        if (this.config.mode === 'multiplayer' && this.websocketClient) {
+            this.sendTilePlacementCommand(gridX, gridY, this.draggedTile);
         } else {
-            // Show error feedback
-            this.showPlacementError(gridX, gridY);
+            // Single-player mode: place tile locally
+            const success = this.gameState.placeTile(gridX, gridY, this.draggedTile);
+            
+            if (success) {
+                // Remove from tile bank
+                this.tileSystem.removeTileFromBank(this.draggedTile);
+                
+                // Clear bank selection
+                this.tileSystem.clearBankSelection();
+                
+                // Exit placement mode if active
+                if (this.isPlacementMode) {
+                    this.exitPlacementMode();
+                }
+            } else {
+                // Show error feedback
+                this.showPlacementError(gridX, gridY);
+            }
         }
     }
     
@@ -741,27 +986,65 @@ class Game {
         }
         
         if (this.isPlacementMode && this.selectedTileForPlacement) {
-            // Attempt to place the selected tile
-            const success = this.gameState.placeTile(x, y, this.selectedTileForPlacement);
-            
-            if (success) {
-                console.log('Tile placed successfully');
-                // Remove from tile bank
-                this.tileSystem.removeTileFromBank(this.selectedTileForPlacement);
-                
-                // Exit placement mode
-                this.exitPlacementMode();
+            // In multiplayer mode, send tile placement command to server
+            if (this.config.mode === 'multiplayer' && this.websocketClient) {
+                this.sendTilePlacementCommand(x, y, this.selectedTileForPlacement);
             } else {
-                console.log('Tile placement failed - but NOT exiting placement mode');
-                // Show error feedback but don't exit placement mode
-                this.showPlacementError(x, y);
+                // Single-player mode: place tile locally
+                const success = this.gameState.placeTile(x, y, this.selectedTileForPlacement);
                 
-                // Allow user to try again or manually exit placement mode
-                // They can click outside the game area or press Escape to exit
+                if (success) {
+                    console.log('Tile placed successfully');
+                    // Remove from tile bank
+                    this.tileSystem.removeTileFromBank(this.selectedTileForPlacement);
+                    
+                    // Exit placement mode
+                    this.exitPlacementMode();
+                } else {
+                    console.log('Tile placement failed - but NOT exiting placement mode');
+                    // Show error feedback but don't exit placement mode
+                    this.showPlacementError(x, y);
+                    
+                    // Allow user to try again or manually exit placement mode
+                    // They can click outside the game area or press Escape to exit
+                }
             }
         } else {
             console.log('Not in placement mode or no tile selected');
         }
+    }
+    
+    sendTilePlacementCommand(x, y, tile) {
+        if (!this.websocketClient) {
+            console.error('WebSocket client not available');
+            return;
+        }
+        
+        // Check if it's the player's turn
+        if (this.tileSystem && !this.tileSystem.isMyTurn) {
+            console.warn('Not your turn - cannot place tiles');
+            this.toastManager.showWarning('Not your turn!');
+            return;
+        }
+        
+        console.log(`Sending tile placement command: ${tile.type} at (${x}, ${y})`);
+        
+        const command = {
+            type: "cmd",
+            payload: {
+                action: "placeTile",
+                data: {
+                    x: x,
+                    y: y,
+                    tile_type: tile.type
+                }
+            }
+        };
+        
+        this.websocketClient.send(command);
+        
+        // Exit placement mode immediately (server will handle validation)
+        this.exitPlacementMode();
     }
     
     handleTilePlaced(event) {
@@ -832,14 +1115,22 @@ class Game {
             this.paused = false;
         }
         
-        // Start systems
-        this.resourceManager.start();
-        this.tileSystem.start();
+        // Start systems conditionally based on mode
+        if (this.config.mode === 'single-player') {
+            // In single-player mode, start all local systems
+            this.resourceManager.start();
+            this.tileSystem.start();
+            console.log('Single-player systems started');
+        } else {
+            // In multiplayer mode, only start UI systems
+            // Resource generation and tile management are handled by server
+            console.log('Multiplayer mode: local systems disabled, waiting for server');
+        }
         
-        // Initialize worker UI
+        // Initialize worker UI (both modes need this)
         this.updateWorkerUI();
         
-        // Start game loop
+        // Start game loop (both modes need this for rendering)
         requestAnimationFrame(this.gameLoop);
         
         console.log('Game started');

@@ -51,6 +51,16 @@ class ResourceManager {
         // TODO: Update resource manager
     }
     
+    updateResources(resources) {
+        // Update resources for display
+        console.log('ResourceManager updating resources:', resources);
+        
+        // Update UI manager if available
+        if (window.game && window.game.uiManager) {
+            window.game.uiManager.updateResourceDisplay(resources);
+        }
+    }
+    
     cleanup() {
         console.log('ResourceManager cleanup');
         if (this.resourceTicker) {
