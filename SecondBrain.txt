@@ -1,0 +1,32 @@
+Game Week:
+Game design:
+ - Elements of Carcassonne (tile placement worldbuilding, medieval theme)
+ - Elements from Age of Empires
+   - Real-time battles
+   - Conquer to win
+Tech Stack:
+Game
+ - Phaser, because it is a 2D game engine (this is essentially a 2D game)
+   - possibly a bit bloated? Some recommend re-building the few components you need.
+ - PixiJS
+   - good for 2D rendering
+   - no physics engine, etc; fine since it's a top-down game
+   - lighter weight than Phaser
+Server
+ - Python FastAPI
+   - with websockets alone (requires endpoints for making matches) or with Nakama
+ - Nakama
+   - bigger than simply websocket, but can handle matchmaking and waiting rooms
+   - has Python package
+   - requires additional server (docker container)
+   - connects to Phaser on client side as well
+ - Nakama actually handles everything on single server (using Python), so no need for additional FastAPI
+   - Install Nakama - run on Docker - enable Python runtime - Nakama loads Python files for game logic
+   - Nakama JS SDK for integration with PixiJS
+ - Nakama does not work well with Python, Docker had a hard time finding scripts, so Python FastAPI now
+Development:
+ - Landed on PixiJS for frontend and FastAPI with websockets for server
+ - Generated GDD and Development Roadmap with Grok
+ - Used Taskmaster MCP to generate tasks and subtasks (VERY USEFUL!)
+   - Very helpful with new chats. It gets the model up to speed immediately.
+   - Taskmaster is also pretty good with bug fixes. I've described my issues, it analyzed the code, and created new tasks
