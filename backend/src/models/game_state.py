@@ -67,6 +67,7 @@ class GameEvent(BaseModel):
 
 class GameSettings(BaseModel):
     """Game configuration settings."""
+    max_players: int = Field(ge=2, le=4, default=4, description="Maximum number of players in the game")
     turn_duration: float = Field(ge=1, default=15.0, description="Turn duration in seconds")
     max_game_duration: float = Field(ge=1, default=1800.0, description="Maximum game duration in seconds")
     map_size: int = Field(ge=10, le=100, default=40, description="Size of the square map")

@@ -41,6 +41,9 @@ class Game {
             this.renderer = new GameRenderer();
             await this.renderer.init();
             
+            // Set game state reference for renderer
+            this.renderer.gameState = this.gameState;
+            
             // Initialize UI Manager
             this.uiManager = new UIManager();
             this.uiManager.init(this.renderer);
@@ -48,7 +51,17 @@ class Game {
             // Initialize game systems
             this.tileSystem = new TileSystem(this.gameState);
             this.resourceManager = new ResourceManager(this.gameState);
-            this.unitSystem = new UnitSystem(this.gameState);
+            
+            this.unitSystem = new UnitSystem(this.gameState, this.renderer);
+            
+            // Initialize unit system
+            await this.unitSystem.init();
+            
+            // Initialize unit training UI
+            this.unitTrainingUI = new UnitTrainingUI(this.gameState, this.unitSystem);
+            
+            // Initialize unit commands system
+            this.unitCommands = new UnitCommands(this.gameState, this.unitSystem);
             
             // Initialize multiplayer if needed
             if (this.config.mode === 'multiplayer') {
@@ -59,8 +72,11 @@ class Game {
             // Set up game state
             this.setupInitialState();
             
-            // Set up event listeners
-            this.setupEventListeners();
+                    // Set up event listeners
+        this.setupEventListeners();
+        
+        // Add unit system event listeners
+        this.setupUnitEventListeners();
             
             // Start game loop
             this.start();
@@ -88,6 +104,9 @@ class Game {
         // Initialize new map
         this.gameState.initializeMap();
         
+        // Log tile creation summary
+        console.log(`Created ${this.gameState.tiles.size} tiles on the map`);
+        
         // Initialize resource manager
         this.resourceManager.initializeResources();
         
@@ -97,7 +116,97 @@ class Game {
         // Render initial tiles
         this.renderer.renderTiles(this.gameState.tiles);
         
+        // Create some test units for development
+        this.createTestUnits();
+        
         console.log('Initial game state set up complete');
+    }
+    
+    createTestUnits() {
+        // Create some test units for development
+        if (!this.unitSystem || !this.unitSystem.initialized) return;
+        
+        const testUnits = [
+            {
+                id: 'test-unit-1',
+                type: 'infantry',
+                owner: 0,
+                position: { x: 15, y: 15 },
+                hp: 100,
+                maxHp: 100,
+                attack: 20,
+                defense: 15,
+                speed: 1.0,
+                range: 1,
+                status: 'idle'
+            },
+            {
+                id: 'test-unit-2',
+                type: 'archer',
+                owner: 1,
+                position: { x: 17, y: 15 },
+                hp: 75,
+                maxHp: 75,
+                attack: 25,
+                defense: 10,
+                speed: 1.5,
+                range: 2,
+                status: 'idle'
+            },
+            {
+                id: 'test-unit-3',
+                type: 'knight',
+                owner: 0,
+                position: { x: 20, y: 20 },
+                hp: 120,
+                maxHp: 150,
+                attack: 30,
+                defense: 20,
+                speed: 0.8,
+                range: 1,
+                status: 'idle'
+            },
+            {
+                id: 'test-unit-4',
+                type: 'siege',
+                owner: 1,
+                position: { x: 25, y: 25 },
+                hp: 120,
+                maxHp: 120,
+                attack: 50,
+                defense: 5,
+                speed: 0.5,
+                range: 2,
+                status: 'idle'
+            }
+        ];
+        
+        for (const unit of testUnits) {
+            this.unitSystem.createUnit(unit);
+        }
+        
+        console.log('Created test units for development');
+    }
+    
+    setupUnitEventListeners() {
+        // Listen for unit selection events
+        window.addEventListener('unit:selected', (event) => {
+            const { unit } = event.detail;
+            console.log('Unit selected:', unit);
+            
+            // Highlight selected unit (could add visual feedback here)
+            this.selectedUnit = unit;
+        });
+        
+        // Listen for unit training events
+        window.addEventListener('unit:train', (event) => {
+            const { tileId, unitType } = event.detail;
+            console.log('Unit training requested:', { tileId, unitType });
+            
+            // This would send request to backend when WebSocket is implemented
+        });
+        
+        console.log('Unit event listeners set up');
     }
     
     setupEventListeners() {
@@ -482,6 +591,11 @@ class Game {
         this.tileSystem.update(deltaTime);
         this.unitSystem.update(deltaTime);
         
+        // Update training UI
+        if (this.unitTrainingUI) {
+            this.unitTrainingUI.update(deltaTime);
+        }
+        
         // Update UI
         this.uiManager.update(deltaTime);
     }
@@ -492,8 +606,9 @@ class Game {
         
         // Render game elements
         this.renderer.renderTiles(this.gameState.tiles);
-        this.renderer.renderUnits(this.gameState.units);
-        this.renderer.renderWorkers(this.gameState.workers);
+        // Units and workers are now rendered by their respective systems
+        // this.renderer.renderUnits(this.gameState.units);
+        // this.renderer.renderWorkers(this.gameState.workers);
         
         // Render UI elements
         this.renderer.renderUI(this.gameState);
@@ -523,6 +638,9 @@ class Game {
         }
         if (this.unitSystem) {
             this.unitSystem.cleanup();
+        }
+        if (this.unitTrainingUI) {
+            this.unitTrainingUI.cleanup();
         }
         if (this.websocketClient) {
             this.websocketClient.disconnect();

@@ -8,6 +8,7 @@ class GameRenderer {
         this.gridTexture = null;
         this.tileContainers = new Map(); // key: "x,y", value: PIXI.Container
         this.initialized = false;
+        this.gameState = null; // Reference to game state
     }
     
     async init() {
@@ -26,6 +27,12 @@ class GameRenderer {
             this.container = document.getElementById('game-canvas-container');
             if (this.container) {
                 this.container.appendChild(this.app.view);
+                
+                // Prevent default context menu on canvas
+                this.app.view.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
             }
             
             // Load sprite textures
@@ -45,12 +52,17 @@ class GameRenderer {
     }
     
     async loadSprites() {
-        // Define sprite paths
+        // Define sprite paths for all tile types
         const spritePaths = {
             'capital_city': 'assets/sprites/Capital.png',
             'city': 'assets/sprites/City.png',
             'field': 'assets/sprites/Field.png',
-            'marsh': 'assets/sprites/Marsh.png'
+            'marsh': 'assets/sprites/Marsh.png',
+            'barracks': 'assets/sprites/Barracks.png',
+            'monastery': 'assets/sprites/Monastery.png',
+            'mine': 'assets/sprites/Mine.png',
+            'orchard': 'assets/sprites/Orchard.png',
+            'watchtower': 'assets/sprites/Watchtower.png'
         };
         
         // Load all sprites
@@ -59,13 +71,27 @@ class GameRenderer {
             try {
                 const texture = await PIXI.Assets.load(path);
                 this.sprites[type] = texture;
+                console.log(`Loaded sprite for ${type}`);
             } catch (error) {
-                console.error(`Failed to load sprite for ${type}:`, error);
+                console.log(`No sprite found for ${type}, using fallback`);
                 // Create a fallback colored rectangle
                 const graphics = new PIXI.Graphics();
                 graphics.beginFill(this.getTileColor(type));
                 graphics.drawRect(0, 0, GameConfig.TILE_SIZE, GameConfig.TILE_SIZE);
                 graphics.endFill();
+                
+                // Add a text label for the tile type
+                const text = new PIXI.Text(type.replace('_', '\n'), {
+                    fontFamily: 'Arial',
+                    fontSize: 14,
+                    fill: 0xffffff,
+                    align: 'center'
+                });
+                text.anchor.set(0.5);
+                text.x = GameConfig.TILE_SIZE / 2;
+                text.y = GameConfig.TILE_SIZE / 2;
+                graphics.addChild(text);
+                
                 this.sprites[type] = this.app.renderer.generateTexture(graphics);
             }
         }
@@ -163,7 +189,30 @@ class GameRenderer {
                 tileContainer.buttonMode = true;
                 tileContainer.on('pointerover', () => this.onTileHover(x, y));
                 tileContainer.on('pointerout', () => this.onTileLeave(x, y));
-                tileContainer.on('pointerdown', () => this.onTileClick(x, y));
+                tileContainer.on('pointerdown', (e) => this.onTileClick(x, y, e));
+                tileContainer.on('rightclick', (e) => this.onTileRightClick(x, y, e));
+                
+                // Add double-click handler for unit training
+                let clickCount = 0;
+                let clickTimer = null;
+                tileContainer.on('pointerup', (e) => {
+                    clickCount++;
+                    if (clickCount === 1) {
+                        clickTimer = setTimeout(() => {
+                            // Single click - do nothing special for now
+                            clickCount = 0;
+                        }, 400);
+                    } else if (clickCount === 2) {
+                        clearTimeout(clickTimer);
+                        clickCount = 0;
+                        
+                        // Stop the event from propagating
+                        e.stopPropagation();
+                        e.preventDefault();
+                        
+                        this.onTileDoubleClick(x, y, e);
+                    }
+                });
                 
                 // Add drag and drop event listeners to the DOM element
                 const domElement = tileContainer.getBounds();
@@ -229,12 +278,50 @@ class GameRenderer {
         }
     }
     
-    onTileClick(x, y) {
+    onTileClick(x, y, event) {
         // Emit custom event for tile click
-        const event = new CustomEvent('tileClick', {
-            detail: { x, y }
+        const clickEvent = new CustomEvent('tileClick', {
+            detail: { x, y, event }
         });
-        document.dispatchEvent(event);
+        document.dispatchEvent(clickEvent);
+    }
+    
+    onTileRightClick(x, y, event) {
+        console.log(`Tile right-clicked at (${x}, ${y})`);
+        
+        // Prevent default browser right-click menu
+        event.preventDefault();
+        event.stopPropagation();
+        
+        // Get tile data from game state
+        const tileKey = `${x},${y}`;
+        const tile = this.gameState?.tiles?.get(tileKey);
+        
+        // Dispatch custom event for unit commands
+        window.dispatchEvent(new CustomEvent('tile:rightclick', {
+            detail: { x, y, tile, event }
+        }));
+    }
+    
+    onTileDoubleClick(x, y, event) {
+        console.log(`Tile double-clicked at (${x}, ${y})`);
+        
+        // Stop event propagation to prevent other handlers from firing
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
+        
+        // Get tile data from game state
+        const tileKey = `${x},${y}`;
+        const tile = this.gameState?.tiles?.get(tileKey);
+        
+        if (tile) {
+            // Dispatch custom event
+            window.dispatchEvent(new CustomEvent('tile:doubleclick', {
+                detail: { x, y, tile, event }
+            }));
+        }
     }
     
     renderTile(x, y, tileData) {

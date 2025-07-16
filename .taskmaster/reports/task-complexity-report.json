@@ -1,0 +1,53 @@
+{
+	"meta": {
+		"generatedAt": "2025-07-16T04:49:19.869Z",
+		"tasksAnalyzed": 5,
+		"totalTasks": 10,
+		"analysisCount": 5,
+		"thresholdScore": 1,
+		"projectName": "Taskmaster",
+		"usedResearch": false
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 6,
+			"taskTitle": "FastAPI WebSocket Server & Game State Sync",
+			"complexityScore": 7,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Refine Task 6 by detailing each concern into an actionable subtask: 1) Connection & Room Lifecycle Management, 2) Authoritative Tick Loop & Broadcast Optimization, 3) Command Validation & State Mutation, 4) Matchmaking & Load Balancing, 5) Error Handling, Metrics & Logging, 6) Performance Benchmarking & Profiling. For each subtask list definition of done, interfaces affected, and acceptance tests.",
+			"reasoning": "Requires concurrent WebSocket handling, shared state mutation, performance guarantees and security; spans backend architecture, async patterns and load-testing, placing it in upper-mid complexity."
+		},
+		{
+			"taskId": 7,
+			"taskTitle": "Frontend Multiplayer Integration & UI Feedback",
+			"complexityScore": 6,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break Task 7 into: 1) WebSocket Client Wrapper & Reconnect Logic, 2) State Diff/Patch & Prediction Reconciliation, 3) Animation & Tween Smoothing Layer, 4) UI/UX Feedback (toasts, timers), 5) Latency Measurement & Debug Overlay. Provide deliverables, dependencies on backend message formats, and test scenarios for each.",
+			"reasoning": "Involves real-time networking, state diffing and visual interpolation on the client side; moderate complexity with multiple moving UI parts but confined to frontend."
+		},
+		{
+			"taskId": 8,
+			"taskTitle": "Conquest & Watchtower Mechanics",
+			"complexityScore": 6,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Divide Task 8 into: 1) Data Model Extensions (capturable tiles, HP, aura fields), 2) Combat & Raiding Rule Engine, 3) Elimination & Victory Flow Integration, 4) Client-Side Indicators (HP bar, aura visuals, banners). Specify required API changes and unit/integration tests.",
+			"reasoning": "Adds several interdependent gameplay rules that touch both server logic and client representation; complexity is moderate given existing battle framework."
+		},
+		{
+			"taskId": 9,
+			"taskTitle": "Tech Tree & Progression System",
+			"complexityScore": 5,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Structure Task 9 into: 1) Backend Upgrade Logic & Validation, 2) Shared Balance Constants Sync Pipeline, 3) Frontend Tech Menu UI/UX, 4) Ability Cooldown & Resource Deduction System. Outline acceptance criteria and cross-team touchpoints.",
+			"reasoning": "Primarily CRUD-style feature with timed effects and UI overlay; moderate but contained scope leveraging existing resource system."
+		},
+		{
+			"taskId": 10,
+			"taskTitle": "AI Opponents, Visual/Audio Polish & Performance Optimization",
+			"complexityScore": 8,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Expand Task 10 into: 1) AI Decision Tree Implementation, 2) Pathfinding & Tactical Evaluation, 3) Asset Pipeline & Texture Atlas Integration, 4) Animation System Linking (GSAP), 5) Audio Layer with Howler.js, 6) Render Loop Profiling & Optimization, 7) QA Playtest & Performance Certification. Provide measurable KPIs and toolchain requirements for each.",
+			"reasoning": "Combines new AI logic, asset workflows, audio/visual polish and deep performance tuning—spanning backend and graphics pipeline—making it one of the project’s most complex tasks."
+		}
+	]
+}
