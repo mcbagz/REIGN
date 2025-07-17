@@ -782,13 +782,14 @@ class UIManager {
     
     // Helper methods for game state updates
     updateCurrentPlayerDisplay(currentPlayerId) {
-        const playerInfo = document.getElementById('player-info');
-        if (playerInfo) {
-            const playerName = playerInfo.querySelector('.player-name');
-            if (playerName) {
-                playerName.textContent = `Player ${currentPlayerId + 1}`;
-            }
+        // Update turn information display (whose turn it is for tile selection)
+        const turnInfo = document.getElementById('turn-info');
+        if (turnInfo) {
+            turnInfo.textContent = `Tile Selection: Player ${currentPlayerId + 1}'s turn`;
         }
+        
+        // Note: Player identity display is handled in game.js and should not be overridden here
+        // Each client should see their own player identity, not the current turn player
     }
     
     updateTurnTimer(timeRemaining) {

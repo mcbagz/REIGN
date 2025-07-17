@@ -352,12 +352,12 @@ class Room:
         
         properties = {
             TileType.MINE: {
-                "resources": Resources(gold=50, food=0, faith=0),
+                "resources": Resources(gold=2, food=0, faith=0),  # Changed from 50 to 2 as per GDD
                 "hp": 150,
                 "metadata": TileMetadata(can_train=False, worker_capacity=0)
             },
             TileType.ORCHARD: {
-                "resources": Resources(gold=0, food=50, faith=0),
+                "resources": Resources(gold=0, food=2, faith=0),  # Changed from 50 to 2 as per GDD
                 "hp": 150,
                 "metadata": TileMetadata(can_train=False, worker_capacity=0)
             },

@@ -38,6 +38,8 @@ class CycleTimer {
         this.container = document.createElement('div');
         this.container.id = 'cycle-timer-container';
         this.container.className = `cycle-timer-container ${this.config.position}`;
+        // Hide the distracting timer element
+        this.container.style.display = 'none';
         
         this.container.innerHTML = `
             <div class="cycle-timer">

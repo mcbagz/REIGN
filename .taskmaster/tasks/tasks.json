@@ -369,7 +369,53 @@
         "priority": "medium",
         "dependencies": [],
         "status": "pending",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Data Model Extensions",
+            "description": "Extend shared schemas, server models, and DB tables to support new conquest mechanics.",
+            "dependencies": [],
+            "details": "• Add fields: Tile.capturable:boolean (default false); Player.capital_hp:int; Watchtower.aura_radius:int=2.\n• Update JSON Schemas, Pydantic models, TypeScript types; bump schema version.\n• API changes: PATCH /tiles/{id} accepts capturable; /players/{id}/capital returns hp; new WS event 'aura-enter'.\n• Tests: unit – schema round-trip, default values, migration script; integration – create map with capturable tiles and watchtower, verify serialization through REST & WS.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Combat & Raiding Rule Engine",
+            "description": "Implement server-side rule engine additions for siege modifiers, raiding resource theft, and watchtower aura defense buff.",
+            "dependencies": [
+              1
+            ],
+            "details": "• Modify calculate_damage(): if attacker.type=='siege' and target.is_building => dmg×2.\n• Implement raid_action(attacker_tile, defender_tile): transfer 10% resources, emit WS 'raid'.\n• Watchtower aura hook: on unit_move, check distance<=2 to friendly watchtower, apply defBuff=1.25 during resolve_combat().\n• API changes: POST /actions/raid, new payload {attacker_id, target_tile_id}.\n• Tests: unit – damage calc with siege vs building, raid resource math, aura buff application; integration – simulate move into aura, fight, assert reduced damage.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Elimination & Victory Flow Integration",
+            "description": "Wire elimination rules and victory detection into turn processor and broadcast pipeline.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "• On capital_hp<=0: set Player.state='eliminated', purge from placement cycle.\n• Victory check: if remaining active_players<=1 emit WS 'game-victory' with winner_id.\n• Placement timer skip logic refactor.\n• API changes: WS events 'player-eliminated', 'game-victory'; GET /game/status includes eliminated list.\n• Tests: integration – simulate capital destruction, assert eliminated flag, placement order shrink, victory event when sole survivor.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Client-Side Indicators",
+            "description": "Render HP bars, aura visuals, and elimination/victory banners based on new server messages.",
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
+            "details": "• PixiJS components: CapitalHpBar, AuraOverlay (blend mode add), BannerLayer.\n• State adapters: handle WS 'aura-enter', 'player-eliminated', 'game-victory'.\n• UI effects: fade aura on exit; animate banner slide-in.\n• API changes consumed: update TS types from shared schemas.\n• Tests: jest – component render with mock props; Cypress – full game sim ensures banners appear and HP bar shrinks with damage.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
       },
       {
         "id": 9,
@@ -380,7 +426,52 @@
         "priority": "medium",
         "dependencies": [],
         "status": "pending",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Backend Upgrade Logic & Validation",
+            "description": "Add FastAPI endpoints and service layer to handle Manor→Duchy→Kingdom upgrades, including resource checks, 5-second asynchronous completion and state mutation that unlocks new units/tiles.",
+            "dependencies": [],
+            "details": "Acceptance Criteria:\n• POST /upgrade returns 400 when resources insufficient.\n• Upgrade takes ≥5s wall-clock; polling GET /player shows level unchanged during countdown and upgraded after.\n• On success, new units/tiles appear in /player/unlocks response.\n• Unit tests cover happy path and rejection cases.\nCross-Team Touchpoints:\n• Coordinate with Frontend for API contract (request/response shapes).\n• Sync with Design for exact unlock lists per level.\n• QA to define load test for concurrent upgrades.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Shared Balance Constants Sync Pipeline",
+            "description": "Implement script & CI step that sources /shared/balance.ts and generates matching Python module to ensure single-source of truth for costs, cooldowns and unlock tables.",
+            "dependencies": [
+              1
+            ],
+            "details": "Acceptance Criteria:\n• Running `npm run sync:balance` updates backend/balance.py deterministically.\n• CI fails if generated file is outdated.\n• Type fidelity: numbers stay numbers, enums preserved as Enum classes.\n• Documentation in README with usage instructions.\nCross-Team Touchpoints:\n• DevOps to add script invocation to GitHub Actions.\n• Backend & Frontend leads sign off on schema structure.\n• Notify QA so automated tests reference unified constants.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Frontend Tech Menu UI/UX",
+            "description": "Create PixiJS overlay component that lists tech upgrades, shows tooltips, progress bar and disabled states; integrates with backend upgrade API and listens for player level updates via WS.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Acceptance Criteria:\n• Tech menu opens via hotkey ‘T’ and close button.\n• Each upgrade button displays cost, effects tooltip and disabled style when unaffordable or already completed.\n• Clicking Upgrade triggers POST /upgrade and starts in-menu progress bar synced to backend timer.\n• WS push updates button state without full refresh.\n• Lighthouse accessibility score ≥80 for overlay.\nCross-Team Touchpoints:\n• Work with UX designer on layout/tooltip copy.\n• Backend coordination for websocket event name and payload.\n• QA to add Cypress tests for button states.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Ability Cooldown & Resource Deduction System",
+            "description": "Introduce backend and frontend mechanisms for ‘Heal’ and ‘Inspire’ abilities that deduct faith, respect cooldown Map<ability, timestamp> and reflect status on UI quick-bar.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Acceptance Criteria:\n• Ability activation fails with 429 status if cooldown active.\n• Faith cost deducted atomically with ability effect; rejection rolls back.\n• Cooldown timers visible on button icons counting down in real time.\n• Unit tests: trigger ability → expect player.faith reduced and next activation blocked until cooldown expires.\nCross-Team Touchpoints:\n• Balance team to confirm cost & cooldown values in shared constants.\n• Frontend to subscribe to cooldown updates via WS or polling.\n• QA to run end-to-end ‘speedrun’ scenario validating resource curve.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
       },
       {
         "id": 10,
@@ -391,7 +482,89 @@
         "priority": "medium",
         "dependencies": [],
         "status": "pending",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "AI Decision Tree Implementation",
+            "description": "Build heuristic-based decision tree that evaluates economy, army strength and enemy weakness every 5 s to issue high-level commands.",
+            "dependencies": [],
+            "details": "KPIs:\n- ≥95% of decision cycles execute <2 ms on Intel i3-8100.\n- AI wins ≥60% of mirror matches against random baseline.\nToolchain:\n- TypeScript + ts-pattern for decision node DSL.\n- Jest with jsdom for headless AI outcome tests.\n- ESLint + Prettier enforced via husky pre-commit.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Pathfinding & Tactical Evaluation",
+            "description": "Integrate A* pathfinding with threat heat-map to let AI units navigate terrain and choose attack vectors.",
+            "dependencies": [
+              1
+            ],
+            "details": "KPIs:\n- Path calc <1 ms for 90% of calls (measured over 10 000 paths).\n- Units take ≤5% more steps than theoretical shortest path.\nToolchain:\n- pathfinding.ts library, shared worker for off-main-thread search.\n- WebWorker benchmark harness with Benchmark.js.\n- Chrometrace export for micro-profiling.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Asset Pipeline & Texture Atlas Integration",
+            "description": "Automate sprite export from Aseprite and pack into texture atlases consumed by PixiJS.",
+            "dependencies": [],
+            "details": "KPIs:\n- Atlas generation completes <30 s for 500 assets.\n- Final atlas count ≤4 (2k×2k) with <5% wasted space.\nToolchain:\n- Aseprite CLI + TexturePacker.\n- Node Gulp script for watch & rebuild.\n- Lint-staged to validate asset naming conventions.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Animation System Linking (GSAP)",
+            "description": "Hook GSAP timelines to atlas frames enabling tile fades, walk cycles and combat effects.",
+            "dependencies": [
+              3
+            ],
+            "details": "KPIs:\n- 100% animations start within 16 ms of trigger.\n- CPU overhead from GSAP ≤3% during mass unit march (50 units/player).\nToolchain:\n- GSAP 3.x with PixiPlugin.\n- Storybook stories for animation previews.\n- Perf baseline captured via Spector.js.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Audio Layer with Howler.js",
+            "description": "Implement music loops, combat SFX and mute/unmute toggles using Howler.js audio sprites.",
+            "dependencies": [
+              3
+            ],
+            "details": "KPIs:\n- Audio latency ≤50 ms after event dispatch.\n- Memory footprint for decoded buffers ≤40 MB.\nToolchain:\n- Audacity batch export to OGG + MP3.\n- howler.js 2.x.\n- Web Audio Inspector Chrome extension for analysis.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 6,
+            "title": "Render Loop Profiling & Optimization",
+            "description": "Profile PixiJS render loop, implement batching & texture purge to sustain 60 FPS under full load.",
+            "dependencies": [
+              2,
+              3,
+              4,
+              5
+            ],
+            "details": "KPIs:\n- Maintain ≥60 FPS, frame budget ≤16.6 ms (95th percentile) with 200 units and full effects.\n- Peak GPU memory ≤300 MB.\nToolchain:\n- PixiJS devtools, Chrome Perf panel.\n- pixi-stats overlay, WebGL Profiler.\n- CI Lighthouse run with puppeteer.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 7,
+            "title": "QA Playtest & Performance Certification",
+            "description": "Conduct structured playtests vs 3 AI, certify performance, visuals and audio against KPIs.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "details": "KPIs:\n- 0 blocker/critical bugs across 10 playtest sessions.\n- Pass Lighthouse Performance score ≥90 on i3 laptop.\n- Average player session crash rate <1% over 50 hours cumulative testing.\nToolchain:\n- Cypress e2e scripted scenarios.\n- Steam Playtest build uploads with telemetry.\n- Jira for defect tracking, TestRail for case management.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
       },
       {
         "id": 11,
@@ -466,7 +639,7 @@
     ],
     "metadata": {
       "created": "2025-07-15T16:18:01.677Z",
-      "updated": "2025-07-16T21:12:17.552Z",
+      "updated": "2025-07-17T02:24:32.427Z",
       "description": "Tasks for master context"
     }
   }

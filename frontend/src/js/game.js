@@ -1020,12 +1020,9 @@ class Game {
             return;
         }
         
-        // Check if it's the player's turn
-        if (this.tileSystem && !this.tileSystem.isMyTurn) {
-            console.warn('Not your turn - cannot place tiles');
-            this.toastManager.showWarning('Not your turn!');
-            return;
-        }
+        // **REAL-TIME TILE PLACEMENT**: No turn restriction for placing tiles from personal bank
+        // Players can place tiles from their personal bank onto the grid at any time
+        // Only tile SELECTION from offers is turn-based (15-second cycles)
         
         console.log(`Sending tile placement command: ${tile.type} at (${x}, ${y})`);
         

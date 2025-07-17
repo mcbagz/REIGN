@@ -98,25 +98,52 @@ class UnitCommands {
     }
     
     handleTileClick(x, y) {
+        console.log(`=== TILE CLICK DEBUG ===`);
+        console.log(`Tile clicked at (${x}, ${y})`);
+        console.log(`Total units in game state: ${this.gameState.units.size}`);
+        console.log(`Units map:`, this.gameState.units);
+        
         // Check if there's a unit at this position
         const unitsAtPosition = this.getUnitsAt(x, y);
         
-        console.log(`Tile clicked at (${x}, ${y}), units found:`, unitsAtPosition.length);
+        console.log(`Units found at position (${x}, ${y}):`, unitsAtPosition.length);
         
         if (unitsAtPosition.length > 0) {
             // Select the first unit at this position
             const unit = unitsAtPosition[0];
             console.log(`Found unit at (${x}, ${y}):`, unit);
-            this.selectUnit(unit);
+            console.log(`Unit owner: ${unit.owner}`);
+            
+            // Check current player
+            const currentPlayer = this.gameState.getCurrentPlayer();
+            console.log(`Current player:`, currentPlayer);
+            
+            if (currentPlayer && unit.owner === currentPlayer.id) {
+                console.log(`Unit belongs to current player - selecting it`);
+                this.selectUnit(unit);
+            } else {
+                console.log(`Unit does not belong to current player - cannot select`);
+            }
         } else {
+            console.log(`No units found at (${x}, ${y})`);
+            
+            // Debug: Show all units and their positions
+            console.log(`All units in game state:`);
+            for (const [unitId, unit] of this.gameState.units) {
+                console.log(`  Unit ${unitId} at (${unit.position.x}, ${unit.position.y}):`, unit);
+            }
+            
             // Only clear selection if no units are currently selected
             // This prevents clearing selection during right-click movement commands
             if (this.selectedUnits.size > 0) {
                 console.log('Keeping selection active for potential commands');
             } else {
+                console.log('No units selected, clearing selection');
                 this.clearSelection();
             }
         }
+        
+        console.log(`=== END TILE CLICK DEBUG ===`);
     }
     
     handleTileRightClick(x, y, tile) {
@@ -178,14 +205,38 @@ class UnitCommands {
         for (const unit of this.selectedUnits) {
             console.log(`Moving unit ${unit.id} from (${unit.position.x}, ${unit.position.y}) to (${x}, ${y})`);
             
-            // Send move command to unit system
-            this.unitSystem.moveUnit(unit.id, { x, y });
+            // Send move command to server via websocket
+            this.sendUnitMoveCommand(unit.id, x, y);
             
             // Show move indicator
             this.showCommandIndicator(x, y, 'move');
         }
         
         console.log(`Move command completed for ${this.selectedUnits.size} units`);
+    }
+    
+    sendUnitMoveCommand(unitId, targetX, targetY) {
+        // Get websocket client from game instance
+        const websocketClient = window.gameInstance?.websocketClient;
+        if (!websocketClient) {
+            console.error('WebSocket client not available for unit movement');
+            return;
+        }
+        
+        const command = {
+            type: "cmd",
+            payload: {
+                action: "moveUnit",
+                data: {
+                    unit_id: unitId,
+                    target_x: targetX,
+                    target_y: targetY
+                }
+            }
+        };
+        
+        console.log(`Sending unit move command:`, command);
+        websocketClient.send(command);
     }
     
     issueAttackCommand(x, y, target) {

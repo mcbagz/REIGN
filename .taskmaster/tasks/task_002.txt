@@ -1,0 +1,31 @@
+# Task ID: 2
+# Title: Define Core Data Schemas & API Contracts
+# Status: done
+# Dependencies: None
+# Priority: medium
+# Description: All core data contracts are now formalized and validated. JSON Schemas, mirrored Pydantic models, and auto-generated TypeScript types provide a single-source-of-truth for tiles, units, full game state, and WebSocket messaging envelopes.
+# Details:
+✅ JSON Schemas (shared/schemas)
+  • tile.schema.json – tile structure with worker slot, resource bundle, owner, HP, edge meta, etc.
+  • unit.schema.json – full combat stats, targeting, type effectiveness, status flags
+  • game-state.schema.json – authoritative game snapshot: players, tiles, units, settings, metadata
+  • websocket-message.schema.json – {type:"cmd|state|error", version, ts, payload, ack?, retry?}
+
+✅ Python Pydantic Models (backend/src/models)
+  • Auto-generated from the above schemas and hand-tweaked for enum/type safety
+  • Round-trip serialization using orjson
+
+✅ TypeScript Types (frontend/src/types)
+  • Generated via quicktype in build script `npm run build:types`
+  • Re-exported barrel file `index.ts` for easy imports
+
+✅ Contract Features
+  • Command, state, and error payload patterns with priority, ack, retry, and versioning support
+  • Strict validation across the stack; sample data fixtures included for integration tests
+
+
+# Test Strategy:
+Python: 12 pytest cases validate model construction, validation errors, and round-trip serialization.
+TypeScript: 4 jest tests confirm schema <-> type coherence and client serialization.
+CI step runs `jsonschema-cli validate` on sample payloads and `npm run build:types` to catch drift.
+Swagger/OpenAPI docs auto-generated from pydantic models for backend reference.

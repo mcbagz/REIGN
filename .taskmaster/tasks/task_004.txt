@@ -1,0 +1,104 @@
+# Task ID: 4
+# Title: Resource Generation & Worker Management
+# Status: done
+# Dependencies: None
+# Priority: medium
+# Description: Add real-time resource tick, 5 workers per player with placement/recall and additive production logic.
+# Details:
+• resources = {gold:0, food:0, faith:0, cap:500};
+• requestAnimationFrame loop accumulates deltaTime; every 1000 ms call tickResources().
+• tickResources(): iterate grid, sum yields per connected component using flood-fill keyed by owner & tileType.
+• Worker UI: sidebar list with drag-and-drop onto eligible tiles; recall sets `worker=null` then `setTimeout(10_000,… )` before reuse.
+• Update resource bar sprites (Pixi bitmap text) in real time.
+• Prevent overflow >cap.
+
+
+# Test Strategy:
+Jest unit tests for tickResources() on mocked grids.
+Manual QA: place 3 connected cities + 1 magistrate ⇒ resource/sec equals 3. Recall worker ⇒ production drops after 0 s; worker re-available after 10 s.
+
+# Subtasks:
+## 1. Implement real-time resource tick scheduler [done]
+### Dependencies: None
+### Description: Create the frame loop that accumulates deltaTime and invokes tickResources() every 1000 ms, guaranteeing consistent behaviour even when the tab is hidden.
+### Details:
+• Add `let delta = 0; let last = performance.now();`
+• In the global `requestAnimationFrame` handler, compute `const now = performance.now(); delta += now - last; last = now;`
+• While `delta >= 1000` call `tickResources()` then `delta -= 1000`.
+• Use `document.visibilitychange` to switch to `setInterval(1000)` when the page is not visible; switch back on focus.
+• Expose `startResourceLoop()` and `stopResourceLoop()` helpers for later tests.
+• Ensure the loop is started from the game bootstrap logic.
+<info added on 2025-07-15T21:40:05.053Z>
+• Implemented deltaTime accumulator that invokes tickResources() exactly once per 1000 ms, independent of frame rate  
+• Added visibilitychange handler that swaps the RAF-driven loop for a setInterval(1000) fallback when the page is hidden, then restores RAF on focus  
+• Exposed ResourceManager.start(), stop(), and destroy() methods for bootstrap, testing, and cleanup scenarios  
+• Hooked ResourceManager.update(delta) into the central Game.update() to reuse the existing RAF and prevent duplicate loops  
+• Guaranteed full teardown by clearing timers and removing event listeners on destroy(), eliminating potential memory leaks  
+• Manual smoke tests verify stable 60 fps with precise 1 s ticks and uninterrupted resource generation through repeated tab hide/show cycles
+</info added on 2025-07-15T21:40:05.053Z>
+
+## 2. Build connected-tile additive yield calculation [done]
+### Dependencies: 4.1
+### Description: Implement tickResources() so it walks the grid, groups connected tiles by owner & tileType, and sums their yields additively before updating player resource pools.
+### Details:
+• Accept the immutable `grid: Map<string, Tile>`.
+• For each unvisited tile with an owner, perform BFS flood-fill across orthogonally adjacent tiles with same owner & tileType.
+• Accumulate yields: `componentYield += tile.baseYield + (tile.worker ? tile.worker.bonus : 0)`.
+• After finishing a component, add its yield to `playerResources[owner][resourceType]`.
+• Call `applyCap(playerResources, cap)` to clamp totals.
+• Return a diff object `{gold:+x, food:+y, faith:+z}` for UI update consumption.
+<info added on 2025-07-15T21:44:12.643Z>
+tickResources() completed with BFS-based component detection, additive yield aggregation, worker validation, and 500-point cap enforcement. Returns per-player delta object for UI binding. Overflow is logged for analytics. Grid traversal uses a Set-based visited cache to prevent double counting. Ready for integration tests and hand-off to worker placement logic in subtask 4.3.
+</info added on 2025-07-15T21:44:12.643Z>
+
+## 3. Implement worker data model and placement/recall logic [done]
+### Dependencies: 4.2
+### Description: Create the Worker class, enforce 5-per-player limit, handle drag placement onto eligible tiles, and implement 10-second cooldown on recall.
+### Details:
+• Define `interface Worker { id:number; owner:string; status:'idle'|'deployed'|'cooldown'; tileKey?:string; }`.
+• Attach `playerWorkers: Record<string, Worker[]>` to game state; pre-populate 5 idle workers per player.
+• `placeWorker(workerId, tileKey)`: validate worker idle, tile is owned by player, slot empty ⇒ set status='deployed', tile.worker reference.
+• `recallWorker(workerId)`: remove reference from tile, set status='cooldown', clear tileKey, start `setTimeout(10000, () => worker.status='idle')`.
+• Emit custom events `workerPlaced` and `workerRecalled` for UI & analytics.
+<info added on 2025-07-15T22:13:31.309Z>
+• Updated GameConfig constants: STARTING_WORKERS = 5 and WORKER_RECALL_TIME = 10_000 ms.  
+• Extended Worker interface to include `cooldownTimer?: ReturnType<typeof setTimeout>` for managing recall delay.  
+• Added `workersById: Map<number, Worker>` to game state for constant-time lookup in addition to per-player arrays.  
+• Completed WorkerManager methods:  
+  – `placeWorker` fully validates idle status, tile ownership, and per-tile capacity (GameConfig.TILE_STATS) before deployment.  
+  – `recallWorker` now triggers a 10-second cooldown, stores the timer reference, and automatically flips the worker back to `idle`.  
+• New custom event `workerCooldownFinished` emitted after cooldown expires, complementing `workerPlaced` and `workerRecalled`.  
+• Implemented helper accessors (`getWorkersByPlayer`, `getAvailableWorkers`, `getDeployedWorkers`, `getWorkersOnTile`) for UI and logic layers.  
+• Integrated worker presence into ResourceManager: `tileGeneratesResources` and `calculateComponentYield` now call `getWorkersOnTile` so tiles that require workers only yield when staffed.  
+• Implementation verified with unit tests; subtask ready to move to UI integration (4.4).
+</info added on 2025-07-15T22:13:31.309Z>
+
+## 4. Create worker management UI (sidebar & on-grid interactions) [done]
+### Dependencies: 4.3
+### Description: Build PixiJS components that display all five workers, allow drag-and-drop onto eligible tiles, visualise cooldown timers, and support click-to-recall.
+### Details:
+• Sidebar: `workersContainer` vertical list; for each worker create a sprite (idle=green, deployed=blue, cooldown=gray overlay with countdown).
+• Drag: on `pointerdown` begin drag, on `pointermove` follow cursor, on `pointerup` test hit on eligible tile → call `placeWorker`.
+• Highlight eligible tiles during drag (e.g., yellow border).
+• Recall: add `pointertap` listener on a worker-occupied tile; confirm recall then call `recallWorker`.
+• Listen to `workerPlaced/workerRecalled` events to refresh sprites and tooltips.
+• Use Tween.js or gsap to animate cooldown radial fill.
+
+## 5. Update resource bar UI with real-time values & cap feedback [done]
+### Dependencies: 4.1, 4.2, 4.3, 4.4
+### Description: Render resource amounts via Pixi bitmap text, refresh them every tick, animate value changes, and visually warn when near or at cap.
+### Details:
+• Create `resourceBarContainer` holding bitmap texts for gold, food, faith.
+• Subscribe to the diff returned by tickResources(); on change tween the number over 0.3 s for smoothness.
+• After applying `applyCap`, if value >= 0.9*cap tint text yellow, if value == cap tint red.
+• Add subtle ‘overflow blocked’ toast when production would exceed cap.
+• Expose `updateCap(newCap)` to allow future upgrades.
+• Ensure bar updates run inside the same RAF as game loop to keep FPS persistent.
+<info added on 2025-07-15T23:25:33.738Z>
+• Added DEBUG_RESOURCE_UI flag and console.group-based tracing that logs tickResources diff, cap enforcement, tween targets, and overflow checks each frame.  
+• updateResourceBar() now forces a text refresh even when diff === 0, preventing stale or blank values during periods of zero production.  
+• initResourceBar() now verifies bitmap font availability; if missing, it automatically falls back to styled Pixi.Text to avoid hard crashes in dev builds.  
+• Unified the resourceBar refresh path so the same update function is invoked from both the RAF loop and the optional fixed-interval test loop, ensuring identical behaviour across modes.  
+• Integrated overflow-toast emitter into shared ToastManager to reuse fade-in/fade-out animations and reduce draw calls.
+</info added on 2025-07-15T23:25:33.738Z>
+

@@ -122,6 +122,9 @@ class GameApp {
                 aiOpponents: 3
             });
             
+            // Expose game instance globally for unit commands
+            window.gameInstance = this.game;
+            
             await this.game.init();
             this.showScreen('game-screen');
             
@@ -141,6 +144,9 @@ class GameApp {
                 playerCount: 4,
                 aiOpponents: 0
             });
+            
+            // Expose game instance globally for unit commands
+            window.gameInstance = this.game;
             
             await this.game.init();
             this.showScreen('game-screen');

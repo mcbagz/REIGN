@@ -19,9 +19,21 @@ const GameConfig = {
         food: 100,
         faith: 0
     },
+    RESOURCE_CAPS: {
+        gold: 500,
+        food: 500,
+        faith: 500
+    },
+    GAME_SETTINGS: {
+        MAX_PLAYERS: 4,
+        MAP_SIZE: 40,
+        TURN_DURATION: 15.0,
+        TILE_BANK_SIZE: 3,
+        RESOURCE_TICK_INTERVAL: 1000
+    },
     
     // Workers
-    STARTING_WORKERS: 5,
+    STARTING_WORKERS: 8,  // Changed from 5 to 8 as per GDD (8 followers per player)
     WORKER_TYPES: {
         MAGISTRATE: 'magistrate',
         FARMER: 'farmer',
@@ -114,43 +126,43 @@ const GameConfig = {
             workerCapacity: 1
         },
         field: {
-            hp: 100,
-            resourceGeneration: { food: 1 },
+            hp: 30,
+            resourceGeneration: { gold: 0, food: 10, faith: 0 },
             canTrain: false,
             workerCapacity: 1
         },
         monastery: {
-            hp: 300,
-            resourceGeneration: { faith: 1 },
+            hp: 80,
+            resourceGeneration: { gold: 0, food: 0, faith: 50 },
             canTrain: false,
             workerCapacity: 1
         },
         marsh: {
-            hp: 30,
+            hp: 20,
             speedMultiplier: 0.3,
             canTrain: false,
             workerCapacity: 0
         },
         mine: {
-            hp: 150,
-            resourceGeneration: { gold: 2 },
+            hp: 60,
+            resourceGeneration: { gold: 40, food: 0, faith: 0 },
             canTrain: false,
             workerCapacity: 0
         },
         orchard: {
-            hp: 150,
-            resourceGeneration: { food: 2 },
+            hp: 60,
+            resourceGeneration: { gold: 0, food: 40, faith: 0 },
             canTrain: false,
             workerCapacity: 0
         },
         barracks: {
-            hp: 400,
+            hp: 120,
             trainingSpeedMultiplier: 0.5,
             canTrain: true,
             workerCapacity: 0
         },
         watchtower: {
-            hp: 500,
+            hp: 150,
             defenseBonus: 0.25,
             defenseRadius: 2,
             canTrain: false,

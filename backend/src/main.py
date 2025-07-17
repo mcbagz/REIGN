@@ -419,7 +419,7 @@ async def handle_message(room: Room, player_id: str, message: dict, websocket: W
         await send_error_response(websocket, "Internal server error", "INTERNAL_ERROR")
 
 async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: WebSocket):
-    """Handle tile placement command from a player"""
+    """Handle tile placement command from a player - TURN-BASED according to GDD"""
     try:
         # Validate required fields
         required_fields = ["x", "y", "tile_type"]
@@ -441,38 +441,32 @@ async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: W
             await send_error_response(websocket, "Coordinates out of bounds", "COORDINATES_OUT_OF_BOUNDS")
             return
 
-        # Check if it's the player's turn
-        if room.state.current_player != next(i for i, p in enumerate(room.state.players) if p.name == player_id):
-            await send_error_response(websocket, "Not your turn", "NOT_YOUR_TURN")
+        # Find the player
+        current_player = find_player_by_name(room.state.players, player_id)
+        if not current_player:
+            await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
             return
+
+        # **REAL-TIME TILE PLACEMENT**: No turn restriction for placing tiles from personal bank
+        # Players can place tiles from their personal bank onto the grid at any time
+        # Only tile SELECTION from offers is turn-based (15-second cycles)
 
         # Check if position is already occupied
         if any(tile.x == x and tile.y == y for tile in room.state.tiles):
             await send_error_response(websocket, "Position already occupied", "POSITION_OCCUPIED")
             return
 
-        # Find the current player
-        current_player = None
-        for player in room.state.players:
-            if player.name == player_id:
-                current_player = player
-                break
-
-        if not current_player:
-            await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
-            return
-
-        # Validate tile type is in current options
-        if not room.state.current_tile_options or tile_type not in room.state.current_tile_options:
-            await send_error_response(websocket, "Invalid tile type for current options", "INVALID_TILE_TYPE")
-            return
-
-        # Check adjacency rules (must be adjacent to at least one existing tile)
+        # Check adjacency (must touch at least one existing tile)
         if not _has_adjacent_tile(x, y, room.state.tiles):
-            await send_error_response(websocket, "Tile must be adjacent to existing tiles", "NO_ADJACENT_TILES")
+            await send_error_response(websocket, "Tile must be adjacent to existing tiles", "NOT_ADJACENT")
             return
 
-        # Check resource costs
+        # Validate tile type against current tile options
+        if tile_type not in room.state.current_tile_options:
+            await send_error_response(websocket, f"Invalid tile type: {tile_type}", "INVALID_TILE_TYPE")
+            return
+
+        # Get tile cost and validate player can afford it
         tile_cost = _get_tile_cost(tile_type)
         if not _can_afford_tile(current_player, tile_cost):
             await send_error_response(websocket, "Insufficient resources", "INSUFFICIENT_RESOURCES")
@@ -483,11 +477,16 @@ async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: W
         current_player.resources["food"] -= tile_cost["food"]
         current_player.resources["faith"] -= tile_cost["faith"]
 
-        # Create new tile with proper properties
+        # Get tile properties
         tile_properties = _get_tile_properties(tile_type)
+
+        # Create new tile with proper type enum
+        from .models.tile import TileType
+        tile_type_enum = TileType(tile_type)
+        
         new_tile = Tile(
             id=f"{x},{y}",
-            type=TileType(tile_type),
+            type=tile_type_enum,
             x=x,
             y=y,
             edges=tile_properties["edges"],
@@ -506,13 +505,8 @@ async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: W
         # Update current player's stats
         current_player.stats.tiles_placed += 1
 
-        # Generate new tile options for next turn (this will be replaced by tile offers system)
-        # room.state.current_tile_options = generate_tile_options(room.state.available_tiles)
-
-        # Advance turn to next player
-        room.state.current_player = (room.state.current_player + 1) % len(room.state.players)
-        room.state.turn_number += 1
-        room.state.turn_time_remaining = room.state.game_settings.turn_duration
+        # **REAL-TIME LOGIC**: No turn advancement for tile placement
+        # Turn advancement is handled by the global 15-second timer only
 
         # Broadcast tile placement to all players in room
         await broadcast_to_room(room, {
@@ -520,7 +514,6 @@ async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: W
             "payload": {
                 "player_id": player_id,
                 "tile": new_tile.model_dump(),
-                "next_player": room.state.current_player,
                 "new_resources": current_player.resources
             },
             "timestamp": datetime.now().isoformat()
@@ -529,10 +522,7 @@ async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: W
         # Broadcast updated tiles to all clients
         room._broadcast_tiles_update()
         
-        # Generate new tile offers for the next player
-        room._generate_tile_offers_for_player(room.state.current_player)
-
-        logger.info(f"Tile placed by {player_id} at ({x}, {y})")
+        logger.info(f"Tile placed by {player_id} at ({x}, {y}) during their turn")
 
     except Exception as e:
         logger.error(f"Error placing tile: {e}")
@@ -801,7 +791,13 @@ async def handle_train_unit(room: Room, player_id: str, data: dict, websocket: W
         
         # Set training status and time
         new_unit.status = UnitStatus.TRAINING
-        new_unit.metadata.training_time = unit_properties["training_time"]
+        training_time = unit_properties["training_time"]
+        
+        # Apply barracks training speed bonus if training at barracks
+        if tile.type == TileType.BARRACKS:
+            training_time *= 0.5  # 50% faster training (0.5x multiplier)
+            
+        new_unit.metadata.training_time = training_time
         new_unit.metadata.training_started = datetime.now().timestamp()
         
         # Add unit to game state
@@ -1009,6 +1005,9 @@ async def handle_move_unit(room: Room, player_id: str, data: dict, websocket: We
         
         # Update last update time
         room.state.last_update = datetime.now().timestamp()
+
+        # Broadcast unit update to all clients
+        room._broadcast_unit_update()
 
         # Broadcast movement to all players
         await broadcast_to_room(room, {

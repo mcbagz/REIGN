@@ -1,0 +1,21 @@
+# Task ID: 1
+# Title: Initialize Repository & Project Infrastructure
+# Status: done
+# Dependencies: None
+# Priority: medium
+# Description: Create monorepo with PixiJS front-end and FastAPI back-end, configure build, linting, CI, and hosting scaffolding.
+# Details:
+• GitHub repo → main branch protected, develop branch for daily work.
+• Monorepo layout:
+  /frontend (Vite + PixiJS v7, TS, ESLint, Prettier)
+  /backend (Python 3.12, FastAPI, uvicorn, poetry)
+  /shared (JSON schemas for tiles/units)
+• Add GitHub Actions:
+  ‑ Frontend: npm ci → npm run build → upload artifact
+  ‑ Backend: poetry install → pytest → uvicorn dry-run
+• Netlify & Render free tiers for preview deploys.
+• .env.sample with WS_URL, API_URL.
+
+
+# Test Strategy:
+Run CI pipeline on PR creation; verify successful build & test stages. Open preview URLs, confirm 200 OK for index.html and /docs (FastAPI swagger).

@@ -39,7 +39,7 @@ class GameState {
                 color: GameConfig.COLORS.PLAYERS[i],
                 resources: { ...GameConfig.STARTING_RESOURCES },
                 techLevel: GameConfig.TECH_LEVELS.MANOR,
-                workers: [],
+                followers: [],
                 units: [],
                 tiles: [],
                 capitalPosition: null,
@@ -47,21 +47,21 @@ class GameState {
                 isAI: i >= this.config.playerCount - this.config.aiOpponents
             };
             
-            // Initialize workers
+            // Initialize followers
             for (let j = 0; j < GameConfig.STARTING_WORKERS; j++) {
-                const workerId = this.nextWorkerId++;
-                const worker = {
-                    id: workerId,
+                const followerId = this.nextWorkerId++;
+                const follower = {
+                    id: followerId,
                     owner: i,
                     status: 'idle', // 'idle', 'deployed', 'cooldown'
                     tileKey: null,
                     cooldownTimer: null,
-                    type: 'worker' // All workers are generic for now
+                    type: 'follower' // All followers are generic for now
                 };
-                player.workers.push(worker);
+                player.followers.push(follower);
                 
-                // Add to global workers map for easy lookup
-                this.workers.set(workerId, worker);
+                // Add to global followers map for easy lookup
+                this.workers.set(followerId, follower);
             }
             
             this.players.set(i, player);
@@ -187,46 +187,46 @@ class GameState {
             return false;
         }
         
-        const worker = player.workers.find(w => w.id === workerId);
-        if (!worker || !worker.available) {
-            console.warn('Worker not available');
+                const follower = player.followers.find(f => f.id === workerId);
+        if (!follower || !follower.available) {
+            console.warn('Follower not available');
             return false;
         }
         
-        // Place worker
-        worker.type = workerType;
-        worker.position = { x, y };
-        worker.available = false;
+        // Place follower
+        follower.type = workerType;
+        follower.position = { x, y };
+        follower.available = false;
         
-        tile.worker = worker;
+        tile.worker = follower;
         
-        console.log(`Worker ${workerId} placed at (${x}, ${y}) as ${workerType}`);
+        console.log(`Follower ${workerId} placed at (${x}, ${y}) as ${workerType}`);
         return true;
     }
     
     recallWorker(workerId) {
         const player = this.getCurrentPlayer();
-        const worker = player.workers.find(w => w.id === workerId);
+        const follower = player.followers.find(f => f.id === workerId);
         
-        if (!worker) {
-            console.warn('Worker not found');
+        if (!follower) {
+            console.warn('Follower not found');
             return false;
         }
         
         // Remove from tile
-        if (worker.position) {
-            const tile = this.getTile(worker.position.x, worker.position.y);
+        if (follower.position) {
+            const tile = this.getTile(follower.position.x, follower.position.y);
             if (tile && tile.worker && tile.worker.id === workerId) {
                 tile.worker = null;
             }
         }
         
         // Set recall timer
-        worker.recallTime = GameConfig.WORKER_RECALL_TIME;
-        worker.type = null;
-        worker.position = null;
+        follower.recallTime = GameConfig.WORKER_RECALL_TIME;
+        follower.type = null;
+        follower.position = null;
         
-        console.log(`Worker ${workerId} recalled, available in ${GameConfig.WORKER_RECALL_TIME}ms`);
+        console.log(`Follower ${workerId} recalled, available in ${GameConfig.WORKER_RECALL_TIME}ms`);
         return true;
     }
     

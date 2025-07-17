@@ -1,0 +1,20 @@
+# Task ID: 8
+# Title: Conquest & Watchtower Mechanics
+# Status: pending
+# Dependencies: None
+# Priority: medium
+# Description: Add capital HP, elimination flow, raiding, tile capture, and watchtower defense aura.
+# Details:
+Server-side:
+• Tile model gains `capturable:bool`.
+• Damage rules: siege ×2 vs buildings.
+• On capital hp<=0 ⇒ mark player eliminated, remove from tile selection cycle, broadcast victory check.
+• Raiding: attacker action steals 0.1 × defender tile resources, updates both inventories.
+• Watchtower: when unit enters aura radius=2, apply defBuff=1.25 in combat calc.
+Client:
+• Capital hp bar UI, elimination banners.
+
+
+# Test Strategy:
+Integration test: python simulate players, destroy capital ⇒ eliminated flag true, placement timer adjusts.
+Unit tests for aura function defBuff().

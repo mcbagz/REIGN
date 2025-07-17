@@ -1,0 +1,17 @@
+# Task ID: 9
+# Title: Tech Tree & Progression System
+# Status: pending
+# Dependencies: None
+# Priority: medium
+# Description: Implement Manor→Duchy→Kingdom upgrades, tech menu, and monastery abilities with cost deductions and cooldowns.
+# Details:
+• Add `player.level` enum.
+• Upgrade action validates resources, triggers 5-s progress bar; upon completion unlocks new units/tiles.
+• TechMenu React-style overlay in Pixi UI, listing Upgrade buttons with tooltip showing effects.
+• Abilities: Heal & Inspire cost faith; add cooldown Map<ability, ts>.
+• Balance constants stored in /shared/balance.ts & mirrored in Python.
+
+
+# Test Strategy:
+Unit: attempt Duchy upgrade with insufficient resources ⇒ blocked.
+E2E: speedrun Manor→Kingdom in ~15 min, monitor resource curve matches PRD targets.
