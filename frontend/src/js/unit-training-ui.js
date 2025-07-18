@@ -285,6 +285,21 @@ class UnitTrainingUI {
             const { tileId, unit } = e.detail;
             this.handleTrainingComplete(tileId, unit);
         });
+        
+        // Listen for server unit updates to clear training state
+        window.addEventListener('server:unit:update', (e) => {
+            const { units } = e.detail;
+            this.handleServerUnitUpdate(units);
+        });
+
+        // Listen for server confirmation of training started
+        document.addEventListener('unitTrainingStarted', (event) => {
+            const { tileId } = event.detail;
+            
+            // Clear the frontend training indicator
+            this.clearTrainingState(tileId);
+            console.log(`Training confirmed by server for tile ${tileId}, clearing frontend indicator`);
+        });
     }
     
     testRealContextMenu() {
@@ -506,40 +521,49 @@ class UnitTrainingUI {
             return;
         }
         
-        // Deduct resources
-        currentPlayer.resources.gold -= unitStats.cost.gold;
-        currentPlayer.resources.food -= unitStats.cost.food;
-        currentPlayer.resources.faith -= unitStats.cost.faith || 0;
-        
-        // Start training
-        const trainingInfo = {
-            unitType,
-            tile,
-            startTime: Date.now(),
-            duration: unitStats.trainingTime,
-            progress: 0
-        };
-        
-        this.trainingQueue.set(tileKey, trainingInfo);
-        
-        // Set timer
-        const timer = setTimeout(() => {
-            this.completeTraining(tileKey);
-        }, unitStats.trainingTime);
-        
-        this.trainingTimers.set(tileKey, timer);
-        
-        // Save tile coordinates before hiding context menu
-        const tileX = x;
-        const tileY = y;
+        // Send training request to server
+        this.sendTrainingRequest(unitType, tile.id, x, y);
         
         // Hide context menu
         this.hideContextMenu();
         
-        // Show training indicator on tile
-        this.showTrainingIndicator(tileX, tileY);
+        console.log(`Requested training ${unitType} at (${x}, ${y}) for tile ${tile.id}`);
+    }
+    
+    sendTrainingRequest(unitType, tileId, x, y) {
+        // Get websocket client from game instance
+        const websocketClient = window.gameInstance?.websocketClient;
+        if (!websocketClient) {
+            console.error('WebSocket client not available for unit training');
+            this.showError('Cannot connect to server');
+            return;
+        }
         
-        console.log(`Started training ${unitType} at (${tileX}, ${tileY})`);
+        const command = {
+            type: "cmd",
+            payload: {
+                action: "trainUnit",
+                data: {
+                    unit_type: unitType,
+                    tile_id: tileId
+                }
+            }
+        };
+        
+        console.log(`Sending unit training command:`, command);
+        websocketClient.send(command);
+        
+        // Show training indicator on tile (optimistic UI)
+        this.showTrainingIndicator(x, y);
+        
+        // Mark as training locally (will be confirmed by server)
+        const tileKey = `${x},${y}`;
+        this.trainingQueue.set(tileKey, {
+            unitType,
+            tileId,
+            startTime: Date.now(),
+            pending: true  // Mark as pending server confirmation
+        });
     }
     
     completeTraining(tileKey) {
@@ -581,6 +605,31 @@ class UnitTrainingUI {
         console.log(`Completed training ${trainingInfo.unitType} at (${x}, ${y})`);
     }
     
+    handleServerUnitUpdate(units) {
+        console.log('Handling server unit update for training UI:', units);
+        
+        // Clear training indicators for any units that now exist on the server
+        units.forEach(unit => {
+            // Handle both flat and nested position formats
+            const unitX = unit.x !== undefined ? unit.x : unit.position?.x;
+            const unitY = unit.y !== undefined ? unit.y : unit.position?.y;
+            const tileKey = `${unitX},${unitY}`;
+            
+            // If we have a training indicator for this position, clear it
+            if (this.trainingQueue.has(tileKey)) {
+                console.log(`Clearing training indicator for tile ${tileKey} - unit now exists`);
+                this.trainingQueue.delete(tileKey);
+                this.hideTrainingIndicator(unitX, unitY);
+                
+                // Clear any timers
+                if (this.trainingTimers.has(tileKey)) {
+                    clearTimeout(this.trainingTimers.get(tileKey));
+                    this.trainingTimers.delete(tileKey);
+                }
+            }
+        });
+    }
+    
     showTrainingIndicator(x, y) {
         // Create visual indicator on tile
         const indicator = document.createElement('div');
@@ -597,6 +646,37 @@ class UnitTrainingUI {
         if (indicator) {
             indicator.remove();
         }
+    }
+
+    clearTrainingState(tileId) {
+        const trainingInfo = this.trainingQueue.get(tileId);
+        if (!trainingInfo) return;
+
+        const [x, y] = tileId.split(',').map(Number);
+
+        // Clear timer
+        const timer = this.trainingTimers.get(tileId);
+        if (timer) {
+            clearTimeout(timer);
+            this.trainingTimers.delete(tileId);
+        }
+
+        // Remove from queue
+        this.trainingQueue.delete(tileId);
+
+        // Refund resources (partial)
+        const currentPlayer = this.gameState.getCurrentPlayer();
+        const refundRate = 0.5; // 50% refund
+        const unitStats = GameConfig.UNIT_STATS[trainingInfo.unitType];
+
+        currentPlayer.resources.gold += Math.floor(unitStats.cost.gold * refundRate);
+        currentPlayer.resources.food += Math.floor(unitStats.cost.food * refundRate);
+        currentPlayer.resources.faith += Math.floor((unitStats.cost.faith || 0) * refundRate);
+
+        // Remove training indicator
+        this.hideTrainingIndicator(x, y);
+
+        console.log(`Cleared training state for tile ${tileId}`);
     }
     
     showError(message) {

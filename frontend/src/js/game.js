@@ -11,6 +11,7 @@ class Game {
         this.unitSystem = null;
         this.websocketClient = null;
         this.uiManager = null;
+        this.conquestSystem = null;
         
         // UI feedback components
         this.toastManager = null;
@@ -49,7 +50,7 @@ class Game {
             // Initialize game state
             this.gameState = new GameState(this.config);
             
-            // Initialize renderer
+            // Initialize renderer (will be linked to UnitSystem after it's created)
             this.renderer = new GameRenderer();
             await this.renderer.init();
             
@@ -97,14 +98,15 @@ class Game {
             // Initialize unit system
             await this.unitSystem.init();
             
-            // Pass tween system to renderer for tile animations
+            // Pass tween system and unit system to renderer for proper rendering
             this.renderer.tweenSystem = this.tweenSystem;
+            this.renderer.unitSystem = this.unitSystem;
             
             // Initialize unit training UI
             this.unitTrainingUI = new UnitTrainingUI(this.gameState, this.unitSystem);
             
             // Initialize unit commands system
-            this.unitCommands = new UnitCommands(this.gameState, this.unitSystem);
+            this.unitCommands = new UnitCommands(this.gameState, this.unitSystem, this);
             
             // Initialize multiplayer if needed
             if (this.config.mode === 'multiplayer') {
@@ -114,6 +116,10 @@ class Game {
                 const playerName = `player_${Date.now()}`;
                 const matchResult = await this.websocketClient.connectWithMatchmaking(playerName);
                 console.log('Multiplayer matchmaking result:', matchResult);
+                
+                // Initialize conquest system for multiplayer
+                this.conquestSystem = new ConquestSystem(this.renderer.app, this.websocketClient);
+                this.renderer.addLayer(this.conquestSystem.getLayer());
                 
                 // Initialize debug components
                 this.latencyMonitor = new LatencyMonitor(this.websocketClient);
@@ -276,7 +282,8 @@ class Game {
             const { tileId, unitType } = event.detail;
             console.log('Unit training requested:', { tileId, unitType });
             
-            // This would send request to backend when WebSocket is implemented
+            // Unit training is now handled by the UnitTrainingUI component
+            // which sends proper WebSocket messages to the server
         });
         
         console.log('Unit event listeners set up');
@@ -529,6 +536,53 @@ class Game {
                 this.toastManager.showInfo(actionMessage.msg);
             }
         });
+
+        // Handle unit training started
+        this.websocketClient.on('unit_training_started', (payload) => {
+            console.log('Unit training started:', payload);
+            
+            // Add to training queue for progress tracking
+            if (!this.trainingQueue) {
+                this.trainingQueue = new Map();
+            }
+            
+            this.trainingQueue.set(payload.unit_id, {
+                unit_id: payload.unit_id,
+                unit_type: payload.unit_type,
+                tile_id: payload.tile_id,
+                player_id: payload.player_id,
+                training_time: payload.training_time,
+                start_time: Date.now()
+            });
+            
+            // Clear frontend training indicator if this was our request
+            if (payload.player_id === this.myPlayerName) {
+                const event = new CustomEvent('unitTrainingStarted', {
+                    detail: { 
+                        tileId: payload.tile_id,
+                        unitType: payload.unit_type,
+                        trainingTime: payload.training_time
+                    }
+                });
+                document.dispatchEvent(event);
+            }
+            
+            // Show notification
+            this.toastManager.showInfo(`${payload.player_id} started training ${payload.unit_type}`);
+        });
+
+        // Handle unit training completed
+        this.websocketClient.on('unit_training_complete', (payload) => {
+            console.log('Unit training complete:', payload);
+            
+            // Remove from training queue
+            if (this.trainingQueue) {
+                this.trainingQueue.delete(payload.unit_id);
+            }
+            
+            // Show notification
+            this.toastManager.showSuccess(`Unit ${payload.unit_type} training completed!`);
+        });
         
         // Handle WebSocket errors
         this.websocketClient.on('error', (error) => {
@@ -618,16 +672,16 @@ class Game {
     
     updatePlayerDisplay() {
         // Update any UI elements that show the player's identity
-        const playerDisplay = document.getElementById('player-display');
-        if (playerDisplay && this.myPlayerId !== undefined) {
-            playerDisplay.textContent = `Player ${this.myPlayerId + 1}`;
+        const playerNameElement = document.querySelector('.player-name');
+        if (playerNameElement && this.myPlayerId !== undefined) {
+            playerNameElement.textContent = `Player ${this.myPlayerId + 1}`;
         }
         
-        // Update any other player-specific UI elements
-        const playerInfo = document.querySelector('.player-info');
-        if (playerInfo && this.myPlayerId !== undefined) {
-            playerInfo.textContent = `You are Player ${this.myPlayerId + 1}`;
-        }
+        console.log(`Updated player display to show Player ${this.myPlayerId + 1}`);
+    }
+    
+    getLocalPlayerId() {
+        return this.myPlayerId;
     }
     
     handleTileOfferUpdate(tileOfferData) {
@@ -688,10 +742,17 @@ class Game {
                 });
             }
             
+            const unitsArray = Array.from(this.gameState.units.values());
+            
             // Update renderer with new units
             if (this.renderer) {
-                this.renderer.renderUnits(Array.from(this.gameState.units.values()));
+                this.renderer.renderUnits(unitsArray);
             }
+            
+            // Notify training UI about server unit updates
+            window.dispatchEvent(new CustomEvent('server:unit:update', {
+                detail: { units: unitsArray }
+            }));
         }
     }
     
@@ -1198,6 +1259,10 @@ class Game {
         if (this.renderer) {
             this.renderer.handleResize();
         }
+        
+        if (this.conquestSystem) {
+            this.conquestSystem.updateScreenSize(window.innerWidth, window.innerHeight);
+        }
     }
     
     cleanup() {
@@ -1221,6 +1286,9 @@ class Game {
         }
         if (this.websocketClient) {
             this.websocketClient.disconnect();
+        }
+        if (this.conquestSystem) {
+            this.conquestSystem.destroy();
         }
         if (this.renderer) {
             this.renderer.cleanup();

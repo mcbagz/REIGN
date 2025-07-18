@@ -1,6 +1,6 @@
 // Game Renderer Class - Enhanced with Grid Support
 class GameRenderer {
-    constructor() {
+    constructor(unitSystem = null) {
         this.app = null;
         this.container = null;
         this.viewport = null;
@@ -9,6 +9,7 @@ class GameRenderer {
         this.tileContainers = new Map(); // key: "x,y", value: PIXI.Container
         this.initialized = false;
         this.gameState = null; // Reference to game state
+        this.unitSystem = unitSystem; // Reference to unit system for proper unit rendering
     }
     
     async init() {
@@ -493,6 +494,7 @@ class GameRenderer {
             // Render units if available
             if (gameState.units && gameState.units.length > 0) {
                 this.renderUnits(gameState.units);
+                this.renderTrainingIndicators(gameState.units);
             }
             
             // Render workers if available
@@ -521,6 +523,47 @@ class GameRenderer {
     renderUnits(units) {
         console.log('Rendering units:', units.length);
         
+        // If we have a UnitSystem, delegate to it for proper unit rendering
+        if (this.unitSystem && this.unitSystem.initialized) {
+            console.log('Using UnitSystem for unit rendering');
+            
+            // Only render units that are not in training status
+            const completedUnits = units.filter(unit => unit.status !== 'training');
+            console.log(`Filtering ${units.length} total units to ${completedUnits.length} completed units`);
+            
+            // Update or create units using the UnitSystem
+            completedUnits.forEach((unit) => {
+                // Handle both flat (unit.x, unit.y) and nested (unit.position.x, unit.position.y) formats
+                const unitX = unit.x !== undefined ? unit.x : unit.position?.x;
+                const unitY = unit.y !== undefined ? unit.y : unit.position?.y;
+                
+                // Convert snake_case to camelCase for frontend compatibility
+                const unitData = {
+                    id: unit.id,
+                    type: unit.type,
+                    owner: unit.owner,
+                    position: { x: unitX, y: unitY },
+                    hp: unit.hp,
+                    maxHp: unit.max_hp || unit.maxHp, // Handle both formats
+                    attack: unit.attack,
+                    defense: unit.defense,
+                    speed: unit.speed,
+                    range: unit.range,
+                    status: unit.status,
+                    createdAt: unit.created_at || unit.createdAt
+                };
+                
+                console.log(`Updating unit ${unit.id} at (${unitX}, ${unitY}) via UnitSystem`);
+                this.unitSystem.updateUnit(unitData);
+            });
+            
+            console.log(`Successfully updated ${completedUnits.length} units via UnitSystem`);
+            return;
+        }
+        
+        // Fallback to improved rendering method if UnitSystem is not available
+        console.warn('UnitSystem not available, using fallback rendering');
+        
         // Clear existing unit sprites
         if (this.unitContainer) {
             this.unitContainer.removeChildren();
@@ -528,36 +571,175 @@ class GameRenderer {
             this.unitContainer = new PIXI.Container();
             this.viewport.addChild(this.unitContainer);
         }
+
+        // Player colors: Green for P1, Red for P2, Blue for P3, Yellow for P4
+        const PLAYER_COLORS = {
+            0: 0x00ff00, // Player 1 - Green
+            1: 0xff0000, // Player 2 - Red  
+            2: 0x0066ff, // Player 3 - Blue
+            3: 0xffff00  // Player 4 - Yellow
+        };
         
-        // Render each unit
-        units.forEach(unit => {
-            console.log('Unit:', unit);
+        // Only render units that are not in training status
+        const completedUnits = units.filter(unit => unit.status !== 'training');
+        console.log(`Filtering ${units.length} total units to ${completedUnits.length} completed units`);
+        
+        completedUnits.forEach((unit) => {
+            // Handle both flat (unit.x, unit.y) and nested (unit.position.x, unit.position.y) formats
+            const unitX = unit.x !== undefined ? unit.x : unit.position?.x;
+            const unitY = unit.y !== undefined ? unit.y : unit.position?.y;
             
-            // Create a simple colored circle for the unit
+            if (unitX === undefined || unitY === undefined) {
+                console.warn(`Unit ${unit.id} has invalid position:`, unit);
+                return;
+            }
+            
+            // Create unit container
+            const unitContainer = new PIXI.Container();
+            
+            // Create unit sprite (colored circle as placeholder)
             const unitSprite = new PIXI.Graphics();
-            unitSprite.beginFill(unit.owner === 0 ? 0x00ff00 : 0xff0000); // Green for player 0, red for others
-            unitSprite.drawCircle(0, 0, 15);
+            const playerColor = PLAYER_COLORS[unit.owner] || 0xffffff;
+            unitSprite.beginFill(playerColor, 0.8);
+            unitSprite.drawCircle(0, 0, GameConfig.TILE_SIZE * 0.3);
             unitSprite.endFill();
             
-            // Position the unit sprite
-            unitSprite.x = unit.x * GameConfig.TILE_SIZE + GameConfig.TILE_SIZE / 2;
-            unitSprite.y = unit.y * GameConfig.TILE_SIZE + GameConfig.TILE_SIZE / 2;
+            // Add unit type indicator
+            unitSprite.lineStyle(2, 0x000000);
+            unitSprite.drawRect(-8, -8, 16, 16);
             
-            // Make it interactive
-            unitSprite.interactive = true;
-            unitSprite.cursor = 'pointer';
+            // Position sprite in center of tile
+            unitSprite.x = GameConfig.TILE_SIZE / 2;
+            unitSprite.y = GameConfig.TILE_SIZE / 2;
             
-            // Add click handler
-            unitSprite.on('click', (event) => {
-                console.log('Unit clicked:', unit);
-                // Dispatch unit click event
-                window.dispatchEvent(new CustomEvent('unit:click', {
-                    detail: { unit: unit, event: event }
-                }));
+            // Add sprite to container
+            unitContainer.addChild(unitSprite);
+            
+            // Create health bar
+            const healthBar = new PIXI.Container();
+            const healthBg = new PIXI.Graphics();
+            healthBg.beginFill(0x000000, 0.7);
+            healthBg.drawRect(-20, -35, 40, 6);
+            healthBg.endFill();
+            
+            const maxHp = unit.max_hp || unit.maxHp || 100;
+            const healthPercent = unit.hp / maxHp;
+            const healthColor = healthPercent > 0.6 ? 0x00ff00 : 
+                               healthPercent > 0.3 ? 0xffff00 : 0xff0000;
+            
+            const healthFill = new PIXI.Graphics();
+            healthFill.beginFill(healthColor);
+            healthFill.drawRect(-19, -34, 38 * healthPercent, 4);
+            healthFill.endFill();
+            
+            healthBar.addChild(healthBg);
+            healthBar.addChild(healthFill);
+            healthBar.x = GameConfig.TILE_SIZE / 2;
+            healthBar.y = GameConfig.TILE_SIZE / 2;
+            
+            unitContainer.addChild(healthBar);
+            
+            // Add interaction
+            unitContainer.interactive = true;
+            unitContainer.buttonMode = true;
+            
+            // Store unit data for interaction
+            unitContainer.unitData = {
+                id: unit.id,
+                type: unit.type,
+                owner: unit.owner,
+                hp: unit.hp,
+                maxHp: maxHp,
+                attack: unit.attack,
+                defense: unit.defense,
+                speed: unit.speed,
+                range: unit.range,
+                status: unit.status
+            };
+            
+            // Add hover effects
+            unitContainer.on('pointerover', () => {
+                unitContainer.scale.set(1.1, 1.1);
+                this.showUnitTooltip(unitContainer.unitData);
             });
             
-            this.unitContainer.addChild(unitSprite);
+            unitContainer.on('pointerout', () => {
+                unitContainer.scale.set(1.0, 1.0);
+                this.hideUnitTooltip();
+            });
+            
+            unitContainer.on('pointerdown', () => {
+                this.selectUnit(unitContainer.unitData);
+            });
+            
+            // Position unit on grid
+            unitContainer.x = unitX * GameConfig.TILE_SIZE;
+            unitContainer.y = unitY * GameConfig.TILE_SIZE;
+            
+            // Add to main container
+            this.unitContainer.addChild(unitContainer);
+            
+            console.log(`Rendered unit ${unit.id} (${unit.type}) at (${unitX}, ${unitY}) with ${unit.hp}/${maxHp} HP`);
         });
+        
+        console.log(`Successfully rendered ${completedUnits.length} units using fallback method`);
+    }
+
+    renderTrainingIndicators(units) {
+        console.log('Rendering training indicators');
+        
+        // Clear existing training indicators
+        if (this.trainingContainer) {
+            this.trainingContainer.removeChildren();
+        } else {
+            this.trainingContainer = new PIXI.Container();
+            this.viewport.addChild(this.trainingContainer);
+        }
+
+        // Player colors for training indicators
+        const PLAYER_COLORS = {
+            0: 0x00ff00, // Player 1 - Green
+            1: 0xff0000, // Player 2 - Red  
+            2: 0x0066ff, // Player 3 - Blue
+            3: 0xffff00  // Player 4 - Yellow
+        };
+        
+        // Only render indicators for units in training status
+        const trainingUnits = units.filter(unit => unit.status === 'training');
+        console.log(`Rendering ${trainingUnits.length} training indicators`);
+        
+        trainingUnits.forEach((unit) => {
+            // Handle both flat (unit.x, unit.y) and nested (unit.position.x, unit.position.y) formats
+            const unitX = unit.x !== undefined ? unit.x : unit.position?.x;
+            const unitY = unit.y !== undefined ? unit.y : unit.position?.y;
+            
+            console.log(`Rendering training indicator for unit ${unit.id} at (${unitX}, ${unitY}), owner: ${unit.owner}`);
+            
+            // Create animated progress indicator
+            const trainingIndicator = new PIXI.Graphics();
+            
+            // Use player-specific color
+            const color = PLAYER_COLORS[unit.owner] || 0x888888;
+            
+            // Draw a pulsing circle outline to indicate training
+            trainingIndicator.lineStyle(3, color, 0.8);
+            trainingIndicator.drawCircle(0, 0, 20);
+            
+            // Add inner loading circle
+            trainingIndicator.lineStyle(2, color, 0.5);
+            trainingIndicator.drawCircle(0, 0, 10);
+            
+            // Position the indicator
+            const indicatorX = unitX * GameConfig.TILE_SIZE + GameConfig.TILE_SIZE / 2;
+            const indicatorY = unitY * GameConfig.TILE_SIZE + GameConfig.TILE_SIZE / 2;
+            
+            trainingIndicator.x = indicatorX;
+            trainingIndicator.y = indicatorY;
+            
+            this.trainingContainer.addChild(trainingIndicator);
+        });
+        
+        console.log(`Successfully rendered ${this.trainingContainer.children.length} training indicators`);
     }
     
     renderWorkers(workers) {
@@ -590,5 +772,89 @@ class GameRenderer {
         if (this.app) {
             this.app.destroy();
         }
+    }
+
+    generateGridTexture() {
+        const graphics = new PIXI.Graphics();
+        
+        // Draw the grid pattern
+        graphics.lineStyle(1, 0x2a3a4a, 0.3);
+        
+        // Draw vertical lines
+        for (let x = 0; x <= GameConfig.GRID_WIDTH; x++) {
+            graphics.moveTo(x * GameConfig.TILE_SIZE, 0);
+            graphics.lineTo(x * GameConfig.TILE_SIZE, GameConfig.GRID_HEIGHT * GameConfig.TILE_SIZE);
+        }
+        
+        // Draw horizontal lines
+        for (let y = 0; y <= GameConfig.GRID_HEIGHT; y++) {
+            graphics.moveTo(0, y * GameConfig.TILE_SIZE);
+            graphics.lineTo(GameConfig.GRID_WIDTH * GameConfig.TILE_SIZE, y * GameConfig.TILE_SIZE);
+        }
+        
+        // Generate texture from graphics
+        return this.app.renderer.generateTexture(graphics);
+    }
+    
+    showUnitTooltip(unit) {
+        // Create tooltip showing unit stats
+        const tooltip = document.getElementById('unit-tooltip') || document.createElement('div');
+        tooltip.id = 'unit-tooltip';
+        tooltip.style.position = 'absolute';
+        tooltip.style.backgroundColor = 'rgba(0,0,0,0.8)';
+        tooltip.style.color = 'white';
+        tooltip.style.padding = '8px';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.fontSize = '12px';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.zIndex = '1000';
+        
+        tooltip.innerHTML = `
+            <div><strong>${unit.type.charAt(0).toUpperCase() + unit.type.slice(1)}</strong></div>
+            <div>HP: ${unit.hp}/${unit.maxHp}</div>
+            <div>Attack: ${unit.attack}</div>
+            <div>Defense: ${unit.defense}</div>
+            <div>Speed: ${unit.speed}</div>
+            <div>Range: ${unit.range}</div>
+            <div>Owner: Player ${unit.owner + 1}</div>
+        `;
+        
+        document.body.appendChild(tooltip);
+        
+        // Position tooltip near mouse
+        const updateTooltipPosition = (e) => {
+            tooltip.style.left = e.clientX + 10 + 'px';
+            tooltip.style.top = e.clientY + 10 + 'px';
+        };
+        
+        document.addEventListener('mousemove', updateTooltipPosition);
+        tooltip.updatePosition = updateTooltipPosition; // Store for cleanup
+    }
+    
+    hideUnitTooltip() {
+        const tooltip = document.getElementById('unit-tooltip');
+        if (tooltip) {
+            if (tooltip.updatePosition) {
+                document.removeEventListener('mousemove', tooltip.updatePosition);
+            }
+            tooltip.remove();
+        }
+    }
+    
+    selectUnit(unit) {
+        console.log('Unit selected:', unit);
+        
+        // Dispatch unit selection event
+        window.dispatchEvent(new CustomEvent('unit:select', {
+            detail: { unit: unit }
+        }));
+        
+        // Visual feedback (if needed)
+        if (this.selectedUnit) {
+            this.selectedUnit.tint = 0xffffff; // Reset previous selection
+        }
+        
+        // Store selected unit reference (would need to be updated for proper implementation)
+        this.selectedUnit = unit;
     }
 } 

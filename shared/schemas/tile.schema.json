@@ -128,10 +128,19 @@
           "type": "number",
           "minimum": 0,
           "description": "Speed multiplier for units passing through"
+        },
+        "auraRadius": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Aura radius for watchtower tiles (defense buff range)"
         }
       },
       "additionalProperties": false,
       "description": "Additional tile metadata"
+    },
+    "capturable": {
+      "type": "boolean",
+      "description": "Whether this tile can be captured by other players"
     }
   },
   "required": ["id", "type", "x", "y", "edges", "hp", "maxHp", "owner", "resources", "placedAt"],

@@ -44,6 +44,7 @@ class Player(BaseModel):
     tech_level: TechLevel = Field(description="Current technology level")
     capital_city: Optional[Position] = Field(default=None, description="Position of capital city, null if eliminated")
     stats: Optional[PlayerStats] = Field(default=None, description="Player statistics")
+    capital_hp: int = Field(ge=0, default=100, description="Current hit points of player's capital city")
 
     class Config:
         """Pydantic configuration."""

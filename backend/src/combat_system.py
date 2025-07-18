@@ -137,7 +137,7 @@ class CombatSystem:
         
         return targets
     
-    def process_combat_tick(self, all_units: Dict[str, Unit], current_time: float) -> List[CombatEvent]:
+    def process_combat_tick(self, all_units: Dict[str, Unit], current_time: float, conquest_system=None) -> List[CombatEvent]:
         """Process one combat tick for all units."""
         events = []
         
@@ -160,6 +160,11 @@ class CombatSystem:
                 # Attack the first target (closest or first found)
                 target = targets[0]
                 damage = unit.calculate_damage(target)
+                
+                # Apply aura defense multiplier if conquest system is available
+                if conquest_system:
+                    defense_multiplier = conquest_system.get_defense_multiplier(target)
+                    damage = int(damage / defense_multiplier)  # Reduce damage by defense multiplier
                 
                 # Apply damage
                 target_died = target.take_damage(damage)

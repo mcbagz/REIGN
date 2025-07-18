@@ -29,6 +29,12 @@ class MessageType(str, Enum):
     UNIT_MOVED = "unit_moved"
     UNIT_ATTACKED = "unit_attacked"
     RESOURCE_UPDATED = "resource_updated"
+    TILE_ATTACK = "tile_attack"
+    RAID = "raid"
+    PLAYER_ELIMINATED = "player_eliminated"
+    GAME_VICTORY = "game_victory"
+    AURA_ENTER = "aura_enter"
+    AURA_EXIT = "aura_exit"
 
 
 class Priority(str, Enum):
@@ -62,6 +68,7 @@ class CommandAction(str, Enum):
     MOVE_UNIT = "move_unit"
     ATTACK_UNIT = "attack_unit"
     ATTACK_TILE = "attack_tile"
+    RAID_TILE = "raid_tile"
     END_TURN = "end_turn"
     PAUSE_GAME = "pause_game"
     RESUME_GAME = "resume_game"

@@ -157,6 +157,10 @@ export interface Player {
      */
     capitalCity: CapitalCity | null;
     /**
+     * Current hit points of player's capital city
+     */
+    capitalHp?: number;
+    /**
      * Player color (hex code)
      */
     color: string;
@@ -435,6 +439,7 @@ const typeMap: any = {
     ], false),
     "Player": o([
         { json: "capitalCity", js: "capitalCity", typ: u(r("CapitalCity"), null) },
+        { json: "capitalHp", js: "capitalHp", typ: u(undefined, 0) },
         { json: "color", js: "color", typ: "" },
         { json: "id", js: "id", typ: 0 },
         { json: "isConnected", js: "isConnected", typ: true },

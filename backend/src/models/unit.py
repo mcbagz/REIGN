@@ -2,14 +2,16 @@
 Unit model for Carcassonne: War of Ages.
 """
 
-from typing import Optional, Dict, List, TYPE_CHECKING
+from typing import Optional, Dict, List, Set, TYPE_CHECKING
 from enum import Enum
 from pydantic import BaseModel, Field
 import time
-import uuid
 
 if TYPE_CHECKING:
     from src.pathfinding import Pathfinder, MovementSystem
+
+# Module-level unit ID counter
+_next_unit_id = 1
 
 
 class UnitType(str, Enum):
@@ -50,16 +52,18 @@ class UnitCost(BaseModel):
 
 
 class CombatEffectiveness(BaseModel):
-    """Combat effectiveness against different unit types."""
+    """Combat effectiveness against different unit types and buildings."""
     infantry: float = Field(description="Damage multiplier vs infantry")
     archer: float = Field(description="Damage multiplier vs archer")
     knight: float = Field(description="Damage multiplier vs knight")
     siege: float = Field(description="Damage multiplier vs siege")
+    building: float = Field(default=1.0, description="Damage multiplier vs buildings/tiles")
 
 
 class UnitMetadata(BaseModel):
     """Additional unit metadata."""
     training_time: Optional[float] = Field(default=None, description="Time in seconds to train this unit")
+    training_started: Optional[float] = Field(default=None, description="Timestamp when training started")
     cost: Optional[UnitCost] = Field(default=None, description="Resource cost to train this unit")
     effectiveness: Optional[CombatEffectiveness] = Field(default=None, description="Combat effectiveness against different unit types")
 
@@ -95,6 +99,12 @@ class Unit(BaseModel):
         base_damage = self.attack
         multiplier = self.get_combat_multiplier(target.type)
         return int(base_damage * multiplier)
+    
+    def calculate_building_damage(self, target_tile_type: str = None) -> int:
+        """Calculate damage this unit would deal to a building/tile."""
+        base_damage = self.attack
+        multiplier = self.get_combat_multiplier("building")
+        return int(base_damage * multiplier)
 
     def is_in_range(self, target_pos: Position) -> bool:
         """Check if target position is within attack range."""
@@ -112,6 +122,8 @@ class Unit(BaseModel):
     @classmethod
     def create_unit(cls, unit_type: UnitType, owner: int, position: Position) -> 'Unit':
         """Create a new unit with default stats based on type."""
+        global _next_unit_id
+        
         # Default unit stats (matching frontend config)
         unit_stats = {
             UnitType.INFANTRY: {
@@ -143,15 +155,19 @@ class Unit(BaseModel):
                 "cost": UnitCost(gold=200, food=0),
                 "training_time": 20.0,
                 "effectiveness": CombatEffectiveness(
-                    infantry=0.5, archer=0.8, knight=1.0, siege=1.0
+                    infantry=0.5, archer=0.8, knight=1.0, siege=1.0, building=2.0
                 )
             }
         }
         
         stats = unit_stats[unit_type]
         
+        # Generate simple integer ID
+        unit_id = str(_next_unit_id)
+        _next_unit_id += 1
+        
         return cls(
-            id=str(uuid.uuid4()),
+            id=unit_id,
             type=unit_type,
             owner=owner,
             position=position,
@@ -295,13 +311,13 @@ class UnitSystem:
         
         return completed_units
     
-    def process_combat(self, current_time: float) -> List[Dict]:
+    def process_combat(self, current_time: float, conquest_system=None) -> List[Dict]:
         """Process combat between units using spatial hash. Returns combat events."""
         # Update spatial hash with current positions
         self.combat_system.update_spatial_hash(self.units)
         
         # Process combat tick
-        combat_events = self.combat_system.process_combat_tick(self.units, current_time)
+        combat_events = self.combat_system.process_combat_tick(self.units, current_time, conquest_system)
         
         # Convert CombatEvent dataclasses to dictionaries for WebSocket serialization
         serialized_events = []
@@ -331,7 +347,7 @@ class UnitSystem:
             else:
                 self.pathfinder.set_terrain_weight(position, 1.0)
     
-    def move_unit(self, unit_id: str, target_position: Position) -> bool:
+    def move_unit(self, unit_id: str, target_position: Position, valid_tile_positions: Optional[Set[str]] = None) -> bool:
         """Request unit movement to target position."""
         unit = self.get_unit(unit_id)
         if not unit or unit.status == UnitStatus.DEAD:
@@ -345,7 +361,7 @@ class UnitSystem:
                 blocked_positions.add(pos_key)
         
         # Find path
-        path = self.pathfinder.find_path(unit.position, target_position, blocked_positions)
+        path = self.pathfinder.find_path(unit.position, target_position, blocked_positions, valid_tile_positions)
         
         if path:
             # Set unit path and status
@@ -446,4 +462,27 @@ class UnitSystem:
         if not unit1 or not unit2:
             return None
         
-        return DamageCalculator.calculate_combat_outcome(unit1, unit2) 
+        return DamageCalculator.calculate_combat_outcome(unit1, unit2)
+    
+    def update_units(self, delta_time: float, conquest_system=None) -> Dict[str, List]:
+        """Update all unit systems. Returns events for each update type."""
+        events = {
+            "training_completed": [],
+            "movement_events": [],
+            "combat_events": []
+        }
+        
+        # Update training
+        current_time = time.time()
+        completed_units = self.update_training(current_time)
+        events["training_completed"] = completed_units
+        
+        # Update movement
+        movement_events = self.update_unit_movement(delta_time)
+        events["movement_events"] = movement_events
+        
+        # Update combat
+        combat_events = self.process_combat(current_time, conquest_system)
+        events["combat_events"] = combat_events
+        
+        return events 

@@ -6,11 +6,16 @@ from typing import Dict, Set, List, Optional
 from datetime import datetime
 import uuid
 import asyncio
+import time
+import logging
 from fastapi import WebSocket
 
 from .models.game_state import GameState, Player, GameStatus, GameSettings, TechLevel
 from .models.unit import Unit, UnitSystem
 from .models.tile import Tile
+from .conquest_system import ConquestSystem
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -25,6 +30,7 @@ class Room:
     last_activity: datetime = field(default_factory=datetime.now)
     loop_task: Optional[asyncio.Task] = None
     unit_system: UnitSystem = field(default_factory=UnitSystem)
+    conquest_system: ConquestSystem = field(default_factory=ConquestSystem)
 
     def __post_init__(self):
         """Initialize room after creation."""
@@ -139,7 +145,21 @@ class Room:
         # Generate initial tile offers for the first player
         self._generate_tile_offers_for_player(self.state.current_player)
         
+        # Sync any existing units to the unit system
+        self._sync_units_to_unit_system()
+        
         print(f"Game state initialized with {len(self.state.tiles)} tiles")
+    
+    def _sync_units_to_unit_system(self):
+        """Synchronize units from game state to unit system."""
+        if not self.state or not self.state.units:
+            return
+            
+        # Add all units from game state to unit system
+        for unit in self.state.units:
+            self.unit_system.add_unit(unit)
+            
+        print(f"Synchronized {len(self.state.units)} units to unit system")
         
     def _initialize_game_map(self):
         """Initialize the game map with capitals, resources, and initial tiles."""
@@ -195,6 +215,8 @@ class Room:
             if owner_id is not None and owner_id < len(self.state.players):
                 from .models.unit import Position
                 self.state.players[owner_id].capital_city = Position(x=pos['x'], y=pos['y'])
+                # Sync capital HP with tile HP
+                self.state.players[owner_id].capital_hp = capital.hp
                 
         print(f"Placed {len(capital_positions)} capital cities")
         
@@ -488,7 +510,46 @@ class Room:
         
         # Update unit movements and combat
         if self.state.units:
-            self.unit_system.update_units(0.1)  # deltaTime = 0.1 seconds
+            # Update conquest system auras based on current tiles
+            self.conquest_system.update_auras(self.state.tiles, self.unit_system.units)
+            
+            events = self.unit_system.update_units(0.1, self.conquest_system)  # deltaTime = 0.1 seconds
+            
+            # Process movement events to sync unit system state back to game state
+            if events and events.get('movement_events'):
+                for event in events['movement_events']:
+                    # Update the unit position in game state
+                    unit_id = event['unit_id']
+                    
+                    # Handle both movement and arrival events
+                    if event['type'] == 'movement':
+                        new_position = event['new_position']
+                    elif event['type'] == 'arrival':
+                        new_position = event['position']
+                    else:
+                        continue  # Skip unknown event types
+                    
+                    # Find the unit in game state and update its position
+                    for unit in self.state.units:
+                        if unit.id == unit_id:
+                            unit.position.x = new_position['x']
+                            unit.position.y = new_position['y']
+                            break
+                
+                # Broadcast unit updates if there were movement events
+                if events['movement_events']:
+                    self._broadcast_unit_update()
+        
+        # Check for player elimination and victory conditions
+        eliminated_players, winner = self.conquest_system.check_elimination(list(self.state.players))
+        
+        # Handle player eliminations
+        for player_id in eliminated_players:
+            await self._handle_player_elimination(player_id)
+        
+        # Handle victory condition
+        if winner is not None:
+            await self._handle_victory(winner)
         
         # Update resource generation (every second)
         if self.tick % 10 == 0:  # 10 ticks = 1 second at 10 FPS
@@ -557,25 +618,34 @@ class Room:
     def _broadcast_unit_update(self):
         """Broadcast updated unit list to all connected clients."""
         if not self.state or not self.state.units:
+            print(f"DEBUG: No units to broadcast. State exists: {self.state is not None}, Units count: {len(self.state.units) if self.state else 0}")
             return
             
+        print(f"DEBUG: Broadcasting {len(self.state.units)} units")
+        
         # Convert units to serializable format
         units_data = []
         for unit in self.state.units:
             unit_data = {
                 "id": unit.id,
-                "type": unit.type.value,
+                "type": unit.type.value if hasattr(unit.type, 'value') else str(unit.type),
                 "owner": unit.owner,
+                "x": unit.position.x,
+                "y": unit.position.y,
                 "position": {"x": unit.position.x, "y": unit.position.y},
-                "status": unit.status.value,
+                "status": unit.status.value if hasattr(unit.status, 'value') else str(unit.status),
                 "hp": unit.hp,
                 "max_hp": unit.max_hp,
                 "attack": unit.attack,
                 "defense": unit.defense,
-                "movement": unit.movement,
+                "speed": unit.speed,
                 "range": unit.range
             }
             units_data.append(unit_data)
+        
+        print(f"DEBUG: Serialized {len(units_data)} units for broadcast")
+        if units_data:
+            print(f"DEBUG: First unit data being sent: {units_data[0]}")
         
         # Create message payload
         message = {
@@ -656,36 +726,102 @@ class Room:
         
         print(f"Broadcast tiles update to {len(self.connections)} clients")
     
-    def _advance_turn(self):
-        """Advance to the next player's turn."""
-        if self.state is None:
-            return
-            
-        active_players = self.get_active_players()
-        if not active_players:
-            return
-            
-        # Find next active player
-        current_player_id = self.state.current_player
-        next_player_id = (current_player_id + 1) % len(self.state.players)
+    async def _handle_player_elimination(self, player_id: int):
+        """Handle player elimination from the game."""
+        import orjson
         
-        # Skip eliminated players
-        attempts = 0
-        while attempts < len(self.state.players):
-            if not self.state.players[next_player_id].is_eliminated:
+        # Find the player
+        player = None
+        for p in self.state.players:
+            if p.id == player_id:
+                player = p
                 break
-            next_player_id = (next_player_id + 1) % len(self.state.players)
-            attempts += 1
         
-        self.state.current_player = next_player_id
+        if not player:
+            return
+        
+        # Mark player as eliminated
+        player.is_eliminated = True
+        player.capital_city = None  # Remove capital city
+        
+        # Remove player from turn order if they're in it
+        if player_id in [p.id for p in self.state.players if not p.is_eliminated]:
+            # Update current player if eliminated player was current
+            if self.state.current_player == player_id:
+                self._advance_turn()
+        
+        # Broadcast elimination event
+        await self._broadcast_message({
+            "type": "player_eliminated",
+            "payload": {
+                "player_id": player_id,
+                "player_name": player.name,
+                "timestamp": datetime.now().timestamp()
+            }
+        })
+        
+        logger.info(f"Player {player_id} ({player.name}) eliminated from room {self.room_id}")
+    
+    async def _handle_victory(self, winner_id: int):
+        """Handle victory condition when only one player remains."""
+        import orjson
+        
+        # Find the winner
+        winner = None
+        for player in self.state.players:
+            if player.id == winner_id:
+                winner = player
+                break
+        
+        if not winner:
+            return
+        
+        # Update game state to finished
+        self.state.status = GameStatus.FINISHED
+        self.state.winner = winner_id
+        
+        # Broadcast victory event
+        await self._broadcast_message({
+            "type": "game_victory",
+            "payload": {
+                "winner_id": winner_id,
+                "winner_name": winner.name,
+                "timestamp": datetime.now().timestamp()
+            }
+        })
+        
+        # Stop the game loop
+        if self.loop_task:
+            self.loop_task.cancel()
+        
+        logger.info(f"Game finished in room {self.room_id}. Winner: {winner_id} ({winner.name})")
+        
+    def _advance_turn(self):
+        """Advance to the next player's turn, skipping eliminated players."""
+        if not self.state.players:
+            return
+        
+        # Get active (non-eliminated) players
+        active_players = [p for p in self.state.players if not p.is_eliminated]
+        
+        if len(active_players) <= 1:
+            # Only one or no players left, game should end
+            return
+        
+        # Find current player index among active players
+        current_player_index = -1
+        for i, player in enumerate(active_players):
+            if player.id == self.state.current_player:
+                current_player_index = i
+                break
+        
+        # Move to next active player
+        next_player_index = (current_player_index + 1) % len(active_players)
+        self.state.current_player = active_players[next_player_index].id
+        
+        # Reset turn timer
+        self.state.turn_time_remaining = 60.0  # 60 seconds per turn
         self.state.turn_number += 1
-        self.state.turn_time_remaining = self.state.game_settings.turn_duration
-        
-        # Generate tile offers for the new active player
-        self._generate_tile_offers_for_player(next_player_id)
-        
-        # Broadcast turn change and tile offers
-        self._broadcast_turn_change()
         
     def _generate_tile_offers_for_player(self, player_id: int):
         """Generate 3 tile offers for the specified player."""
@@ -990,6 +1126,33 @@ class Room:
             "tick": self.tick
         }
         
+        import orjson
+        message_str = orjson.dumps(message).decode()
+        
+        # Send to all connected players
+        disconnected = []
+        for player_id, connection in self.connections.items():
+            # Check if connection is still open before sending
+            if connection.client_state.name != "CONNECTED":
+                print(f"Skipping broadcast to {player_id} - connection closed")
+                disconnected.append(player_id)
+                continue
+                
+            try:
+                await connection.send_text(message_str)
+            except Exception as e:
+                print(f"Failed to send to player {player_id}: {e}")
+                disconnected.append(player_id)
+        
+        # Remove disconnected players
+        for player_id in disconnected:
+            self.remove_player(player_id)
+
+    async def _broadcast_message(self, message):
+        """Broadcast a custom message to all connected players."""
+        if not self.connections:
+            return
+            
         import orjson
         message_str = orjson.dumps(message).decode()
         

@@ -133,6 +133,11 @@
             },
             "additionalProperties": false,
             "description": "Player statistics"
+          },
+          "capitalHp": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Current hit points of player's capital city"
           }
         },
         "required": ["id", "name", "color", "isConnected", "isEliminated", "resources", "techLevel", "capitalCity"],

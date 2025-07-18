@@ -49,6 +49,7 @@ class TileMetadata(BaseModel):
     worker_capacity: int = Field(ge=0, default=1, description="Maximum number of workers this tile can hold")
     defense_bonus: float = Field(ge=0, default=0, description="Defense bonus provided by this tile")
     speed_multiplier: float = Field(ge=0, default=1.0, description="Speed multiplier for units passing through")
+    aura_radius: int = Field(ge=0, default=2, description="Aura radius for watchtower tiles (defense buff range)")
 
 
 class Tile(BaseModel):
@@ -65,6 +66,7 @@ class Tile(BaseModel):
     resources: Resources = Field(description="Resource generation of this tile")
     placed_at: float = Field(description="Timestamp when tile was placed")
     metadata: Optional[TileMetadata] = Field(default=None, description="Additional tile metadata")
+    capturable: bool = Field(default=False, description="Whether this tile can be captured by other players")
 
     class Config:
         """Pydantic configuration."""

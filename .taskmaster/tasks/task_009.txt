@@ -15,3 +15,62 @@
 # Test Strategy:
 Unit: attempt Duchy upgrade with insufficient resources ⇒ blocked.
 E2E: speedrun Manor→Kingdom in ~15 min, monitor resource curve matches PRD targets.
+
+# Subtasks:
+## 1. Backend Upgrade Logic & Validation [pending]
+### Dependencies: None
+### Description: Add FastAPI endpoints and service layer to handle Manor→Duchy→Kingdom upgrades, including resource checks, 5-second asynchronous completion and state mutation that unlocks new units/tiles.
+### Details:
+Acceptance Criteria:
+• POST /upgrade returns 400 when resources insufficient.
+• Upgrade takes ≥5s wall-clock; polling GET /player shows level unchanged during countdown and upgraded after.
+• On success, new units/tiles appear in /player/unlocks response.
+• Unit tests cover happy path and rejection cases.
+Cross-Team Touchpoints:
+• Coordinate with Frontend for API contract (request/response shapes).
+• Sync with Design for exact unlock lists per level.
+• QA to define load test for concurrent upgrades.
+
+## 2. Shared Balance Constants Sync Pipeline [pending]
+### Dependencies: 9.1
+### Description: Implement script & CI step that sources /shared/balance.ts and generates matching Python module to ensure single-source of truth for costs, cooldowns and unlock tables.
+### Details:
+Acceptance Criteria:
+• Running `npm run sync:balance` updates backend/balance.py deterministically.
+• CI fails if generated file is outdated.
+• Type fidelity: numbers stay numbers, enums preserved as Enum classes.
+• Documentation in README with usage instructions.
+Cross-Team Touchpoints:
+• DevOps to add script invocation to GitHub Actions.
+• Backend & Frontend leads sign off on schema structure.
+• Notify QA so automated tests reference unified constants.
+
+## 3. Frontend Tech Menu UI/UX [pending]
+### Dependencies: 9.1, 9.2
+### Description: Create PixiJS overlay component that lists tech upgrades, shows tooltips, progress bar and disabled states; integrates with backend upgrade API and listens for player level updates via WS.
+### Details:
+Acceptance Criteria:
+• Tech menu opens via hotkey ‘T’ and close button.
+• Each upgrade button displays cost, effects tooltip and disabled style when unaffordable or already completed.
+• Clicking Upgrade triggers POST /upgrade and starts in-menu progress bar synced to backend timer.
+• WS push updates button state without full refresh.
+• Lighthouse accessibility score ≥80 for overlay.
+Cross-Team Touchpoints:
+• Work with UX designer on layout/tooltip copy.
+• Backend coordination for websocket event name and payload.
+• QA to add Cypress tests for button states.
+
+## 4. Ability Cooldown & Resource Deduction System [pending]
+### Dependencies: 9.1, 9.2
+### Description: Introduce backend and frontend mechanisms for ‘Heal’ and ‘Inspire’ abilities that deduct faith, respect cooldown Map<ability, timestamp> and reflect status on UI quick-bar.
+### Details:
+Acceptance Criteria:
+• Ability activation fails with 429 status if cooldown active.
+• Faith cost deducted atomically with ability effect; rejection rolls back.
+• Cooldown timers visible on button icons counting down in real time.
+• Unit tests: trigger ability → expect player.faith reduced and next activation blocked until cooldown expires.
+Cross-Team Touchpoints:
+• Balance team to confirm cost & cooldown values in shared constants.
+• Frontend to subscribe to cooldown updates via WS or polling.
+• QA to run end-to-end ‘speedrun’ scenario validating resource curve.
+

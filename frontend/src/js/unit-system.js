@@ -148,9 +148,10 @@ class UnitSystem {
         background.drawRect(-20, -35, 40, 6);
         background.endFill();
         
-        // Health bar
+        // Health bar - handle both camelCase and snake_case
+        const maxHp = unit.maxHp || unit.max_hp || 100;
         const healthBar = new PIXI.Graphics();
-        const healthPercent = unit.hp / unit.maxHp;
+        const healthPercent = unit.hp / maxHp;
         const healthColor = healthPercent > 0.6 ? 0x00ff00 : 
                            healthPercent > 0.3 ? 0xffff00 : 0xff0000;
         
@@ -214,9 +215,10 @@ class UnitSystem {
         tooltip.style.pointerEvents = 'none';
         tooltip.style.zIndex = '1000';
         
+        const maxHp = unit.maxHp || unit.max_hp || 100;
         tooltip.innerHTML = `
             <div><strong>${unit.type.charAt(0).toUpperCase() + unit.type.slice(1)}</strong></div>
-            <div>HP: ${unit.hp}/${unit.maxHp}</div>
+            <div>HP: ${unit.hp}/${maxHp}</div>
             <div>Attack: ${unit.attack}</div>
             <div>Speed: ${unit.speed}</div>
             <div>Range: ${unit.range}</div>
@@ -318,8 +320,9 @@ class UnitSystem {
         // Update unit data
         unitContainer.unitData = unitData;
         
-        // Update health bar
-        this.updateHealthBar(unitData.id, unitData.hp, unitData.maxHp);
+        // Update health bar - handle both camelCase and snake_case
+        const maxHp = unitData.maxHp || unitData.max_hp || 100;
+        this.updateHealthBar(unitData.id, unitData.hp, maxHp);
         
         // Handle death
         if (unitData.hp <= 0 && !this.deadUnits.has(unitData.id)) {
@@ -591,12 +594,101 @@ class UnitSystem {
         
         console.log(`Unit ${unitId} attacking target:`, target);
         
-        // TODO: Implement actual attack logic here
-        // For now, just show combat effect
+        // Determine target position
+        let targetPosition;
         if (target.position) {
-            this.createCombatEffect(unit.position, target.position, 25);
+            targetPosition = target.position;
         } else if (target.x !== undefined && target.y !== undefined) {
-            this.createCombatEffect(unit.position, { x: target.x, y: target.y }, 25);
+            targetPosition = { x: target.x, y: target.y };
+        } else {
+            console.warn('Invalid target for attack:', target);
+            return;
+        }
+        
+        // Check if target is a tile (has tile_type property or is a building)
+        const isTileTarget = target.tile_type || target.type === 'tile' || (!target.id && !target.owner === undefined);
+        
+        if (isTileTarget) {
+            // Send tile attack command via WebSocket
+            this.sendTileAttackCommand(unitId, targetPosition);
+        } else {
+            // Send unit attack command (if needed in the future)
+            this.sendUnitAttackCommand(unitId, target);
+        }
+        
+        // Show combat effect
+        this.createCombatEffect(unit.position, targetPosition, 25);
+    }
+    
+    // Send tile attack command via WebSocket
+    sendTileAttackCommand(unitId, targetPosition) {
+        if (window.game && window.game.websocketClient) {
+            const message = {
+                type: 'command',
+                payload: {
+                    action: 'attackTile',
+                    parameters: {
+                        unit_id: unitId,
+                        target_position: targetPosition
+                    }
+                },
+                timestamp: Date.now(),
+                message_id: `attack_tile_${Date.now()}_${Math.random()}`,
+                player_id: window.game.myPlayerId
+            };
+            
+            window.game.websocketClient.send(message);
+            console.log('Sent tile attack command:', message);
+        } else {
+            console.warn('WebSocket client not available for tile attack command');
+        }
+    }
+    
+    // Send unit attack command via WebSocket (for future use)
+    sendUnitAttackCommand(unitId, target) {
+        if (window.game && window.game.websocketClient) {
+            const message = {
+                type: 'command',
+                payload: {
+                    action: 'attack_unit',
+                    parameters: {
+                        unit_id: unitId,
+                        target_id: target.id
+                    }
+                },
+                timestamp: Date.now(),
+                message_id: `attack_unit_${Date.now()}_${Math.random()}`,
+                player_id: window.game.myPlayerId
+            };
+            
+            window.game.websocketClient.send(message);
+            console.log('Sent unit attack command:', message);
+        } else {
+            console.warn('WebSocket client not available for unit attack command');
+        }
+    }
+    
+    // Send raid command via WebSocket
+    sendRaidCommand(unitId, targetPosition) {
+        if (window.game && window.game.websocketClient) {
+            const message = {
+                type: 'command',
+                payload: {
+                    action: 'raidTile',
+                    parameters: {
+                        unit_id: unitId,
+                        target_position: targetPosition
+                    }
+                },
+                timestamp: Date.now(),
+                message_id: `raid_tile_${Date.now()}_${Math.random()}`,
+                player_id: window.game.myPlayerId
+            };
+            
+            window.game.websocketClient.send(message);
+            console.log('Sent raid command:', message);
+        } else {
+            console.warn('WebSocket client not available for raid command');
         }
     }
     

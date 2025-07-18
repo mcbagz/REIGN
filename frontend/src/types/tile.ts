@@ -12,6 +12,10 @@
  */
 export interface Tile {
     /**
+     * Whether this tile can be captured by other players
+     */
+    capturable?: boolean;
+    /**
      * Edges of the tile [North, East, South, West]
      */
     edges: Edge[];
@@ -76,6 +80,10 @@ export enum Edge {
  * Additional tile metadata
  */
 export interface Metadata {
+    /**
+     * Aura radius for watchtower tiles (defense buff range)
+     */
+    auraRadius?: number;
     /**
      * Whether units can be trained at this tile
      */
@@ -319,6 +327,7 @@ function r(name: string) {
 
 const typeMap: any = {
     "Tile": o([
+        { json: "capturable", js: "capturable", typ: u(undefined, true) },
         { json: "edges", js: "edges", typ: a(r("Edge")) },
         { json: "hp", js: "hp", typ: 0 },
         { json: "id", js: "id", typ: "" },
@@ -333,6 +342,7 @@ const typeMap: any = {
         { json: "y", js: "y", typ: 0 },
     ], false),
     "Metadata": o([
+        { json: "auraRadius", js: "auraRadius", typ: u(undefined, 0) },
         { json: "canTrain", js: "canTrain", typ: u(undefined, true) },
         { json: "defenseBonus", js: "defenseBonus", typ: u(undefined, 3.14) },
         { json: "speedMultiplier", js: "speedMultiplier", typ: u(undefined, 3.14) },

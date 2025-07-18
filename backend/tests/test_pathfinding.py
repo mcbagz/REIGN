@@ -93,6 +93,58 @@ class TestPathfinder:
         
         assert path is not None  # Should find path to valid position
 
+    def test_tile_only_movement(self):
+        """Test pathfinding with tile validation - units can only move on tiles."""
+        pathfinder = Pathfinder()
+        
+        start = Position(x=0, y=0)
+        goal = Position(x=2, y=0)
+        
+        # Define valid tile positions (tiles exist at 0,0 and 2,0 but not 1,0)
+        valid_tile_positions = {"0,0", "2,0"}
+        
+        # Try to find path - should fail because there's no tile at 1,0
+        path = pathfinder.find_path(start, goal, None, valid_tile_positions)
+        
+        assert path is None  # Should not find path because no tile at 1,0
+        
+        # Now add a tile at 1,0 to connect the path
+        valid_tile_positions.add("1,0")
+        
+        path = pathfinder.find_path(start, goal, None, valid_tile_positions)
+        
+        assert path is not None  # Should find path now
+        assert len(path) == 3  # Should be [0,0] -> [1,0] -> [2,0]
+        assert path[0] == start
+        assert path[-1] == goal
+        
+        # Verify all positions in path are on valid tiles
+        for pos in path:
+            pos_key = f"{pos.x},{pos.y}"
+            assert pos_key in valid_tile_positions
+            
+    def test_tile_validation_with_detour(self):
+        """Test pathfinding finds alternate route when direct path has no tiles."""
+        pathfinder = Pathfinder()
+        
+        start = Position(x=0, y=0)
+        goal = Position(x=2, y=0)
+        
+        # Create L-shaped tile layout - no direct path but path exists via detour
+        valid_tile_positions = {"0,0", "0,1", "1,1", "2,1", "2,0"}
+        
+        path = pathfinder.find_path(start, goal, None, valid_tile_positions)
+        
+        assert path is not None  # Should find path via detour
+        assert len(path) == 5  # Should be [0,0] -> [0,1] -> [1,1] -> [2,1] -> [2,0]
+        assert path[0] == start
+        assert path[-1] == goal
+        
+        # Verify all positions in path are on valid tiles
+        for pos in path:
+            pos_key = f"{pos.x},{pos.y}"
+            assert pos_key in valid_tile_positions
+
 
 class TestMovementSystem:
     """Test movement system functionality."""

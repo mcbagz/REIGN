@@ -1,8 +1,9 @@
 // Unit Commands System - Handle unit selection, movement, and combat orders
 class UnitCommands {
-    constructor(gameState, unitSystem) {
+    constructor(gameState, unitSystem, gameInstance) {
         this.gameState = gameState;
         this.unitSystem = unitSystem;
+        this.gameInstance = gameInstance;
         this.selectedUnits = new Set();
         this.commandIndicators = new Map();
         this.processingRightClick = false;
@@ -75,12 +76,12 @@ class UnitCommands {
             console.log(`Selected unit:`, unit);
         }
         
-        // Try to select the first unit owned by current player
-        const currentPlayer = this.gameState.getCurrentPlayer();
+        // Try to select the first unit owned by local player
+        const localPlayerId = this.gameInstance.myPlayerId;
         if (this.gameState.units.size > 0) {
             let firstOwnedUnit = null;
             for (const [unitId, unit] of this.gameState.units) {
-                if (unit.owner === currentPlayer.id) {
+                if (unit.owner === localPlayerId) {
                     firstOwnedUnit = unit;
                     break;
                 }
@@ -90,7 +91,7 @@ class UnitCommands {
                 console.log('Selecting first owned unit:', firstOwnedUnit);
                 this.selectUnit(firstOwnedUnit);
             } else {
-                console.log('No units owned by current player found');
+                console.log('No units owned by local player found');
             }
         } else {
             console.log('No units found in game state');
@@ -114,15 +115,15 @@ class UnitCommands {
             console.log(`Found unit at (${x}, ${y}):`, unit);
             console.log(`Unit owner: ${unit.owner}`);
             
-            // Check current player
-            const currentPlayer = this.gameState.getCurrentPlayer();
-            console.log(`Current player:`, currentPlayer);
+            // Check if unit belongs to local player
+            const localPlayerId = this.gameInstance.myPlayerId;
+            console.log(`Local player ID: ${localPlayerId}, Unit owner: ${unit.owner}`);
             
-            if (currentPlayer && unit.owner === currentPlayer.id) {
-                console.log(`Unit belongs to current player - selecting it`);
+            if (localPlayerId !== undefined && unit.owner === localPlayerId) {
+                console.log(`Unit belongs to local player - selecting it`);
                 this.selectUnit(unit);
             } else {
-                console.log(`Unit does not belong to current player - cannot select`);
+                console.log(`Unit does not belong to local player - cannot select`);
             }
         } else {
             console.log(`No units found at (${x}, ${y})`);
@@ -155,16 +156,16 @@ class UnitCommands {
         }
         
         // Check if right-clicking on enemy unit/tile for attack
-        const currentPlayer = this.gameState.getCurrentPlayer();
+        const localPlayerId = this.gameInstance.myPlayerId;
         const unitsAtPosition = this.getUnitsAt(x, y);
         
         console.log(`Units at target position:`, unitsAtPosition);
         
-        if (unitsAtPosition.length > 0 && unitsAtPosition[0].owner !== currentPlayer.id) {
+        if (unitsAtPosition.length > 0 && unitsAtPosition[0].owner !== localPlayerId) {
             console.log('Attacking enemy unit');
             // Attack enemy unit
             this.issueAttackCommand(x, y, unitsAtPosition[0]);
-        } else if (tile && tile.owner !== null && tile.owner !== currentPlayer.id) {
+        } else if (tile && tile.owner !== null && tile.owner !== localPlayerId) {
             console.log('Attacking enemy tile');
             // Attack enemy tile
             this.issueAttackCommand(x, y, tile);

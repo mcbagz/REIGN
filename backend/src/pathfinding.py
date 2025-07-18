@@ -70,7 +70,8 @@ class Pathfinder:
         return abs(pos1.x - pos2.x) + abs(pos1.y - pos2.y)
     
     def find_path(self, start: Position, goal: Position, 
-                  blocked_positions: Optional[Set[str]] = None) -> Optional[List[Position]]:
+                  blocked_positions: Optional[Set[str]] = None,
+                  valid_tile_positions: Optional[Set[str]] = None) -> Optional[List[Position]]:
         """
         Find path from start to goal using A* algorithm.
         
@@ -78,6 +79,7 @@ class Pathfinder:
             start: Starting position
             goal: Goal position
             blocked_positions: Set of blocked position strings (format: "x,y")
+            valid_tile_positions: Set of valid tile position strings (format: "x,y")
             
         Returns:
             List of positions representing the path, or None if no path exists
@@ -91,6 +93,10 @@ class Pathfinder:
         # Check if goal is blocked
         goal_key = f"{goal.x},{goal.y}"
         if goal_key in blocked_positions:
+            return None
+        
+        # Check if goal is on a valid tile (if tile validation is enabled)
+        if valid_tile_positions is not None and goal_key not in valid_tile_positions:
             return None
         
         # Initialize data structures
@@ -125,6 +131,10 @@ class Pathfinder:
                 
                 # Skip if blocked or already processed
                 if neighbor_key in blocked_positions or neighbor_key in closed_set:
+                    continue
+                
+                # Skip if not on a valid tile (if tile validation is enabled)
+                if valid_tile_positions is not None and neighbor_key not in valid_tile_positions:
                     continue
                 
                 # Calculate costs

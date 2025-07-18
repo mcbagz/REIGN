@@ -8,7 +8,7 @@
 Server-side:
 • Tile model gains `capturable:bool`.
 • Damage rules: siege ×2 vs buildings.
-• On capital hp<=0 ⇒ mark player eliminated, remove from tile selection cycle, broadcast victory check.
+• On capital hp<=0 ⇒ mark player eliminated, remove from placement cycle, broadcast victory check.
 • Raiding: attacker action steals 0.1 × defender tile resources, updates both inventories.
 • Watchtower: when unit enters aura radius=2, apply defBuff=1.25 in combat calc.
 Client:
@@ -18,3 +18,73 @@ Client:
 # Test Strategy:
 Integration test: python simulate players, destroy capital ⇒ eliminated flag true, placement timer adjusts.
 Unit tests for aura function defBuff().
+
+# Subtasks:
+## 1. Data Model Extensions [pending]
+### Dependencies: None
+### Description: Extend shared schemas, server models, and DB tables to support new conquest mechanics.
+### Details:
+• Add fields: Tile.capturable:boolean (default false); Player.capital_hp:int; Watchtower.aura_radius:int=2.
+• Update JSON Schemas, Pydantic models, TypeScript types; bump schema version.
+• API changes: PATCH /tiles/{id} accepts capturable; /players/{id}/capital returns hp; new WS event 'aura-enter'.
+• Tests: unit – schema round-trip, default values, migration script; integration – create map with capturable tiles and watchtower, verify serialization through REST & WS.
+
+## 2. Combat & Raiding Rule Engine [pending]
+### Dependencies: 8.1
+### Description: Implement server-side rule engine additions for siege modifiers, raiding resource theft, and watchtower aura defense buff.
+### Details:
+• Modify calculate_damage(): if attacker.type=='siege' and target.is_building => dmg×2.
+• Implement raid_action(attacker_tile, defender_tile): transfer 10% resources, emit WS 'raid'.
+• Watchtower aura hook: on unit_move, check distance<=2 to friendly watchtower, apply defBuff=1.25 during resolve_combat().
+• API changes: POST /actions/raid, new payload {attacker_id, target_tile_id}.
+• Tests: unit – damage calc with siege vs building, raid resource math, aura buff application; integration – simulate move into aura, fight, assert reduced damage.
+
+## 3. Elimination & Victory Flow Integration [pending]
+### Dependencies: 8.1, 8.2
+### Description: Wire elimination rules and victory detection into turn processor and broadcast pipeline.
+### Details:
+• On capital_hp<=0: set Player.state='eliminated', purge from placement cycle.
+• Victory check: if remaining active_players<=1 emit WS 'game-victory' with winner_id.
+• Placement timer skip logic refactor.
+• API changes: WS events 'player-eliminated', 'game-victory'; GET /game/status includes eliminated list.
+• Tests: integration – simulate capital destruction, assert eliminated flag, placement order shrink, victory event when sole survivor.
+
+## 4. Client-Side Indicators [pending]
+### Dependencies: 8.1, 8.2, 8.3
+### Description: Render HP bars, aura visuals, and elimination/victory banners based on new server messages.
+### Details:
+• PixiJS components: CapitalHpBar, AuraOverlay (blend mode add), BannerLayer.
+• State adapters: handle WS 'aura-enter', 'player-eliminated', 'game-victory'.
+• UI effects: fade aura on exit; animate banner slide-in.
+• API changes consumed: update TS types from shared schemas.
+• Tests: jest – component render with mock props; Cypress – full game sim ensures banners appear and HP bar shrinks with damage.
+
+## 5. Fix Unit Multiplayer Synchronization [pending]
+### Dependencies: None
+### Description: Resolve the critical bug where trained units do not appear on other players' screens in multiplayer.
+### Details:
+The server-side unit training system exists but units are not being properly synchronized across clients. This prevents any combat or conquest mechanics from working properly.
+
+• Investigate unit training WebSocket broadcast pipeline
+• Ensure server emits unit creation events to all connected clients
+• Verify client-side unit rendering handles incoming unit data
+• Fix any serialization issues with unit state transmission
+• Add proper error handling for failed unit synchronization
+
+This is a P0 blocker for conquest mechanics since units must be visible to all players for combat.
+
+## 6. Fix Unit Selection System [pending]
+### Dependencies: None
+### Description: Resolve the critical bug where users cannot click to select their units.
+### Details:
+Unit selection is completely broken, preventing players from issuing movement or attack commands. This must be fixed before any combat mechanics can be implemented.
+
+• Investigate unit click detection and hit areas
+• Ensure unit sprites have proper interactive flags set
+• Verify event listeners for unit selection are properly attached
+• Fix any issues with unit rendering that prevent click detection
+• Implement visual feedback for selected units (highlight, outline, etc.)
+• Test unit selection across different zoom levels and viewport positions
+
+This is a P0 blocker for conquest mechanics since players must be able to select and command their units.
+

@@ -396,7 +396,9 @@ async def handle_message(room: Room, player_id: str, message: dict, websocket: W
                 "placeTile": handle_place_tile,
                 "moveUnit": handle_move_unit,
                 "trainUnit": handle_train_unit,
-                "placeWorker": handle_place_worker
+                "placeWorker": handle_place_worker,
+                "raidTile": handle_raid_tile,
+                "attackTile": handle_attack_tile
             }
             
             handler = command_handlers.get(action)
@@ -713,6 +715,221 @@ async def handle_place_worker(room: Room, player_id: str, data: dict, websocket:
             "timestamp": datetime.now().isoformat()
         }).decode())
 
+async def handle_raid_tile(room: Room, player_id: str, data: dict, websocket: WebSocket):
+    """Handle tile raiding command from a player"""
+    try:
+        # Validate required fields
+        if "unitId" not in data:
+            await send_error_response(websocket, "Missing unit ID", "MISSING_UNIT_ID")
+            return
+        if "targetTileId" not in data:
+            await send_error_response(websocket, "Missing target tile ID", "MISSING_TARGET_TILE_ID")
+            return
+        
+        unit_id = data["unitId"]
+        target_tile_id = data["targetTileId"]
+        
+        # Find the unit
+        unit = room.unit_system.get_unit(unit_id)
+        if not unit:
+            await send_error_response(websocket, "Unit not found", "UNIT_NOT_FOUND")
+            return
+        
+        # Check unit ownership
+        if unit.owner != int(player_id):
+            await send_error_response(websocket, "Unit not owned by player", "UNIT_NOT_OWNED")
+            return
+        
+        # Check unit status
+        if unit.status not in [UnitStatus.IDLE, UnitStatus.ATTACKING]:
+            await send_error_response(websocket, "Unit is not available for raiding", "UNIT_NOT_AVAILABLE")
+            return
+        
+        # Find the target tile
+        target_tile = None
+        for tile in room.state.tiles:
+            if tile.id == target_tile_id:
+                target_tile = tile
+                break
+        
+        if not target_tile:
+            await send_error_response(websocket, "Target tile not found", "TILE_NOT_FOUND")
+            return
+        
+        # Check if unit can raid this tile
+        if not room.conquest_system.can_raid_tile(unit, target_tile):
+            await send_error_response(websocket, "Cannot raid this tile", "CANNOT_RAID_TILE")
+            return
+        
+        # Execute the raid
+        import time
+        current_time = time.time()
+        raid_result = room.conquest_system.execute_raid(unit, target_tile, current_time)
+        
+        if raid_result.success:
+            # Apply resource changes
+            attacker_player = room.players[player_id]
+            target_player = None
+            if target_tile.owner:
+                target_player = room.players.get(str(target_tile.owner))
+            
+            room.conquest_system.apply_raid_resources(raid_result, attacker_player, target_player)
+            
+            # Update game state
+            room.state.last_update = current_time
+            
+            # Broadcast raid event to all players
+            await room.broadcast_to_all({
+                "type": "raid",
+                "payload": {
+                    "attacker_id": raid_result.attacker_id,
+                    "target_tile_id": raid_result.target_tile_id,
+                    "resources_stolen": raid_result.resources_stolen,
+                    "attacker_position": {"x": raid_result.attacker_position.x, "y": raid_result.attacker_position.y},
+                    "target_position": {"x": raid_result.target_position.x, "y": raid_result.target_position.y},
+                    "timestamp": raid_result.timestamp
+                }
+            })
+            
+            # Send success response
+            await websocket.send_text(orjson.dumps({
+                "type": "raid_success",
+                "payload": {
+                    "unit_id": unit_id,
+                    "target_tile_id": target_tile_id,
+                    "resources_stolen": raid_result.resources_stolen
+                },
+                "timestamp": datetime.now().isoformat()
+            }).decode())
+            
+            logger.info(f"Raid executed by {player_id}: unit {unit_id} raided tile {target_tile_id}")
+        else:
+            await send_error_response(websocket, "Raid failed", "RAID_FAILED")
+            
+    except Exception as e:
+        logger.error(f"Error handling raid: {e}")
+        await send_error_response(websocket, f"Raid failed: {str(e)}", "RAID_ERROR")
+
+async def handle_attack_tile(room: Room, player_id: str, data: dict, websocket: WebSocket):
+    """Handle tile attack command from a player"""
+    try:
+        # Validate required fields
+        if "unitId" not in data:
+            await send_error_response(websocket, "Missing unit ID", "MISSING_UNIT_ID")
+            return
+        if "targetTileId" not in data:
+            await send_error_response(websocket, "Missing target tile ID", "MISSING_TARGET_TILE_ID")
+            return
+        
+        unit_id = data["unitId"]
+        target_tile_id = data["targetTileId"]
+        
+        # Find the unit
+        unit = room.unit_system.get_unit(unit_id)
+        if not unit:
+            await send_error_response(websocket, "Unit not found", "UNIT_NOT_FOUND")
+            return
+        
+        # Check unit ownership
+        if unit.owner != int(player_id):
+            await send_error_response(websocket, "Unit not owned by player", "UNIT_NOT_OWNED")
+            return
+        
+        # Check unit status
+        if unit.status not in [UnitStatus.IDLE, UnitStatus.ATTACKING]:
+            await send_error_response(websocket, "Unit is not available for attacking", "UNIT_NOT_AVAILABLE")
+            return
+        
+        # Find the target tile
+        target_tile = None
+        for tile in room.state.tiles:
+            if tile.id == target_tile_id:
+                target_tile = tile
+                break
+        
+        if not target_tile:
+            await send_error_response(websocket, "Target tile not found", "TILE_NOT_FOUND")
+            return
+        
+        # Check if unit can attack this tile
+        if not unit.is_in_range(Position(x=target_tile.x, y=target_tile.y)):
+            await send_error_response(websocket, "Target tile is out of range", "TILE_OUT_OF_RANGE")
+            return
+        
+        # Cannot attack own tiles
+        if target_tile.owner == unit.owner:
+            await send_error_response(websocket, "Cannot attack own tile", "CANNOT_ATTACK_OWN_TILE")
+            return
+        
+        # Calculate damage
+        damage = unit.calculate_building_damage()
+        
+        # Apply damage to tile
+        original_hp = target_tile.hp
+        target_tile.hp = max(0, target_tile.hp - damage)
+        tile_destroyed = target_tile.hp == 0
+        
+        # If this is a capital city, update player's capital HP
+        if target_tile.type == TileType.CAPITAL_CITY and target_tile.owner is not None:
+            # Find the player who owns this capital
+            target_player = None
+            for player in room.state.players:
+                if player.id == target_tile.owner:
+                    target_player = player
+                    break
+            
+            if target_player:
+                # Calculate capital HP ratio and apply to player
+                hp_ratio = target_tile.hp / target_tile.max_hp
+                target_player.capital_hp = int(target_player.capital_hp * hp_ratio)
+                
+                # Ensure capital HP doesn't go below 0
+                target_player.capital_hp = max(0, target_player.capital_hp)
+        
+        # Update game state
+        import time
+        current_time = time.time()
+        room.state.last_update = current_time
+        
+        # Update unit status
+        unit.status = UnitStatus.ATTACKING
+        unit.last_action = current_time
+        
+        # Broadcast tile attack event to all players
+        await room._broadcast_message({
+            "type": "tile_attack",
+            "payload": {
+                "attacker_id": unit_id,
+                "target_tile_id": target_tile_id,
+                "damage": damage,
+                "tile_hp": target_tile.hp,
+                "tile_max_hp": target_tile.max_hp,
+                "tile_destroyed": tile_destroyed,
+                "attacker_position": {"x": unit.position.x, "y": unit.position.y},
+                "target_position": {"x": target_tile.x, "y": target_tile.y},
+                "timestamp": current_time
+            }
+        })
+        
+        # Send success response
+        await websocket.send_text(orjson.dumps({
+            "type": "attack_success",
+            "payload": {
+                "unit_id": unit_id,
+                "target_tile_id": target_tile_id,
+                "damage": damage,
+                "tile_hp": target_tile.hp,
+                "tile_destroyed": tile_destroyed
+            },
+            "timestamp": datetime.now().isoformat()
+        }).decode())
+        
+        logger.info(f"Tile attack by {player_id}: unit {unit_id} attacked tile {target_tile_id} for {damage} damage")
+        
+    except Exception as e:
+        logger.error(f"Error handling tile attack: {e}")
+        await send_error_response(websocket, f"Tile attack failed: {str(e)}", "ATTACK_ERROR")
+
 async def handle_train_unit(room: Room, player_id: str, data: dict, websocket: WebSocket):
     """Handle unit training command from a player"""
     try:
@@ -803,6 +1020,11 @@ async def handle_train_unit(room: Room, player_id: str, data: dict, websocket: W
         # Add unit to game state
         room.state.units.append(new_unit)
         room.state.last_update = datetime.now().timestamp()
+        
+        # Add unit to unit system for pathfinding and movement
+        room.unit_system.add_unit(new_unit)
+        
+        print(f"DEBUG: Added unit {new_unit.id} to state. Total units: {len(room.state.units)}")
 
         # Update player stats
         player.stats.units_created += 1
@@ -851,7 +1073,7 @@ def _get_unit_properties(unit_type: str) -> dict:
     """Get the properties for a unit type."""
     properties = {
         "infantry": {
-            "training_time": 30.0,  # 30 seconds
+            "training_time": 10.0,  # 10 seconds (per Game Design)
             "hp": 100,
             "max_hp": 100,
             "attack": 20,
@@ -860,7 +1082,7 @@ def _get_unit_properties(unit_type: str) -> dict:
             "range": 1
         },
         "archer": {
-            "training_time": 25.0,  # 25 seconds
+            "training_time": 12.0,  # 12 seconds (per Game Design)
             "hp": 75,
             "max_hp": 75,
             "attack": 25,
@@ -869,7 +1091,7 @@ def _get_unit_properties(unit_type: str) -> dict:
             "range": 2
         },
         "knight": {
-            "training_time": 45.0,  # 45 seconds
+            "training_time": 15.0,  # 15 seconds (per Game Design)
             "hp": 150,
             "max_hp": 150,
             "attack": 30,
@@ -878,7 +1100,7 @@ def _get_unit_properties(unit_type: str) -> dict:
             "range": 1
         },
         "siege": {
-            "training_time": 60.0,  # 60 seconds
+            "training_time": 20.0,  # 20 seconds (per Game Design)
             "hp": 120,
             "max_hp": 120,
             "attack": 50,
@@ -970,57 +1192,38 @@ async def handle_move_unit(room: Room, player_id: str, data: dict, websocket: We
             await send_error_response(websocket, f"Target too far. Max distance: {max_move_distance}", "TARGET_TOO_FAR")
             return
 
-        # Use pathfinding to find route
-        pathfinder = Pathfinder(room.state.game_settings.map_size, room.state.game_settings.map_size)
+        # Use the UnitSystem for proper pathfinding and movement
+        target_position = Position(x=target_x, y=target_y)
         
-        # Add obstacles (other units and impassable tiles)
-        obstacles = []
-        for other_unit in room.state.units:
-            if other_unit.id != unit_id and other_unit.status != UnitStatus.DEAD:
-                obstacles.append((other_unit.position.x, other_unit.position.y))
-        
-        # Add impassable tiles (if any)
+        # Get valid tile positions for pathfinding
+        valid_tile_positions = set()
         for tile in room.state.tiles:
-            if tile.metadata and tile.metadata.speed_multiplier == 0:
-                obstacles.append((tile.x, tile.y))
+            tile_key = f"{tile.x},{tile.y}"
+            valid_tile_positions.add(tile_key)
         
-        # Find path
-        path = pathfinder.find_path(
-            (unit.position.x, unit.position.y),
-            (target_x, target_y),
-            obstacles
-        )
+        # Move the unit using the unit system (this handles pathfinding and step-by-step movement)
+        movement_success = room.unit_system.move_unit(unit_id, target_position, valid_tile_positions)
         
-        if not path:
+        if not movement_success:
             await send_error_response(websocket, "No valid path to target", "NO_PATH")
             return
 
-        # Update unit position and status
-        unit.position.x = target_x
-        unit.position.y = target_y
-        unit.status = UnitStatus.IDLE  # Unit completes movement instantly for now
-        
-        # Calculate movement cost (could be based on terrain)
-        movement_cost = _calculate_movement_cost(unit, path, room.state.tiles)
-        
         # Update last update time
         room.state.last_update = datetime.now().timestamp()
 
         # Broadcast unit update to all clients
         room._broadcast_unit_update()
 
-        # Broadcast movement to all players
+        # Broadcast movement command to all players (unit will move step-by-step via game loop)
         await broadcast_to_room(room, {
-            "type": "unit_moved",
+            "type": "unit_move_started",
             "payload": {
                 "player_id": player_id,
                 "unit_id": unit_id,
-                "from_x": path[0][0],
-                "from_y": path[0][1],
+                "from_x": unit.position.x,
+                "from_y": unit.position.y,
                 "to_x": target_x,
-                "to_y": target_y,
-                "path": path,
-                "movement_cost": movement_cost
+                "to_y": target_y
             },
             "timestamp": datetime.now().isoformat()
         })
@@ -1034,13 +1237,13 @@ async def handle_move_unit(room: Room, player_id: str, data: dict, websocket: We
 def _get_unit_move_distance(unit_type: str) -> int:
     """Get the maximum movement distance for a unit type."""
     move_distances = {
-        "infantry": 3,
-        "archer": 4,
-        "knight": 2,
-        "siege": 1
+        "infantry": 10,
+        "archer": 10,
+        "knight": 10,
+        "siege": 10
     }
     
-    return move_distances.get(unit_type, 2)
+    return move_distances.get(unit_type, 10)
 
 def _calculate_movement_cost(unit, path, tiles) -> int:
     """Calculate the movement cost based on terrain."""
