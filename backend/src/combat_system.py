@@ -137,7 +137,23 @@ class CombatSystem:
         
         return targets
     
-    def process_combat_tick(self, all_units: Dict[str, Unit], current_time: float, conquest_system=None) -> List[CombatEvent]:
+    def find_enemy_tiles_in_range(self, attacker: Unit, all_tiles: List) -> List:
+        """Find enemy tiles within attack range."""
+        enemy_tiles = []
+        
+        for tile in all_tiles:
+            # Skip if tile has no owner or is owned by the attacker
+            if tile.owner is None or tile.owner == attacker.owner:
+                continue
+            
+            # Check if tile is in range
+            tile_pos = Position(x=tile.x, y=tile.y)
+            if attacker.is_in_range(tile_pos):
+                enemy_tiles.append(tile)
+        
+        return enemy_tiles
+    
+    def process_combat_tick(self, all_units: Dict[str, Unit], current_time: float, all_tiles: List = None, conquest_system=None) -> List[CombatEvent]:
         """Process one combat tick for all units."""
         events = []
         
@@ -153,7 +169,7 @@ class CombatSystem:
             if not self.can_attack(unit.id, current_time):
                 continue
             
-            # Find targets in range
+            # First priority: Find enemy units in range
             targets = self.find_targets_in_range(unit, all_units)
             
             if targets:
@@ -203,6 +219,64 @@ class CombatSystem:
                     
                     # Remove dead unit from spatial hash
                     self.remove_unit(target.id)
+            
+            elif all_tiles is not None:
+                # Second priority: Find enemy tiles in range if no enemy units found
+                enemy_tiles = self.find_enemy_tiles_in_range(unit, all_tiles)
+                
+                if enemy_tiles:
+                    # Attack the first enemy tile found
+                    target_tile = enemy_tiles[0]
+                    damage = unit.calculate_building_damage()
+                    
+                    # Apply damage to tile
+                    original_hp = target_tile.hp
+                    target_tile.hp = max(0, target_tile.hp - damage)
+                    tile_destroyed = target_tile.hp == 0
+                    
+                    # Update unit status
+                    unit.status = UnitStatus.ATTACKING
+                    unit.last_action = current_time
+                    
+                    # Record attack time
+                    self.unit_last_attack[unit.id] = current_time
+                    
+                    # Create tile attack event
+                    tile_pos = Position(x=target_tile.x, y=target_tile.y)
+                    
+                    event = CombatEvent(
+                        type="tile_attack",
+                        attacker_id=unit.id,
+                        target_id=target_tile.id,
+                        damage=damage,
+                        timestamp=current_time,
+                        position=unit.position,
+                        target_died=tile_destroyed
+                    )
+                    events.append(event)
+                    
+                    # If tile was destroyed, create destruction event
+                    if tile_destroyed:
+                        destruction_event = CombatEvent(
+                            type="tile_destroyed",
+                            attacker_id=unit.id,
+                            target_id=target_tile.id,
+                            damage=damage,
+                            timestamp=current_time,
+                            position=tile_pos,
+                            target_died=True
+                        )
+                        events.append(destruction_event)
+                        
+                        # If it was a capital city, trigger elimination check
+                        from src.models.tile import TileType
+                        if target_tile.type == TileType.CAPITAL_CITY and conquest_system:
+                            # Note: Capital HP synchronization should be handled by the caller
+                            pass
+                else:
+                    # No targets in range, go idle
+                    if unit.status == UnitStatus.ATTACKING:
+                        unit.status = UnitStatus.IDLE
             else:
                 # No targets in range, go idle
                 if unit.status == UnitStatus.ATTACKING:

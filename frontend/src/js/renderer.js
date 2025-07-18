@@ -7,6 +7,7 @@ class GameRenderer {
         this.gridContainer = null;
         this.gridTexture = null;
         this.tileContainers = new Map(); // key: "x,y", value: PIXI.Container
+        this.conquestContainer = null; // For conquest system visual elements
         this.initialized = false;
         this.gameState = null; // Reference to game state
         this.unitSystem = unitSystem; // Reference to unit system for proper unit rendering
@@ -856,5 +857,18 @@ class GameRenderer {
         
         // Store selected unit reference (would need to be updated for proper implementation)
         this.selectedUnit = unit;
+    }
+    
+    // Setup conquest container following the same pattern as other containers
+    setupConquestContainer() {
+        if (this.conquestContainer) {
+            this.conquestContainer.removeChildren();
+        } else {
+            this.conquestContainer = new PIXI.Container();
+            this.conquestContainer.zIndex = 50; // Above tiles but below UI
+            this.viewport.addChild(this.conquestContainer);
+        }
+        
+        return this.conquestContainer;
     }
 } 

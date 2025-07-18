@@ -147,6 +147,7 @@ async def match_player(player_data: dict):
     try:
         player_id = player_data.get("player_id")
         preferred_room_id = player_data.get("room_id")  # Optional
+        dev_mode = player_data.get("dev_mode", False)  # Optional dev mode flag
         
         if not player_id:
             raise HTTPException(status_code=400, detail="player_id is required")
@@ -203,7 +204,7 @@ async def match_player(player_data: dict):
                 }
             
             # No available room found, create a new one
-            new_room = room_manager.create_room()
+            new_room = room_manager.create_room(dev_mode=dev_mode)
             # Reserve a spot in the new room for this player
             new_room.reserved_players = 1
             
@@ -1207,7 +1208,7 @@ async def handle_move_unit(room: Room, player_id: str, data: dict, websocket: We
         if not movement_success:
             await send_error_response(websocket, "No valid path to target", "NO_PATH")
             return
-
+        
         # Update last update time
         room.state.last_update = datetime.now().timestamp()
 

@@ -114,12 +114,13 @@ class Game {
                 
                 // Connect to WebSocket with matchmaking
                 const playerName = `player_${Date.now()}`;
-                const matchResult = await this.websocketClient.connectWithMatchmaking(playerName);
+                const devMode = this.config.devMode || false;
+                const matchResult = await this.websocketClient.connectWithMatchmaking(playerName, devMode);
                 console.log('Multiplayer matchmaking result:', matchResult);
                 
                 // Initialize conquest system for multiplayer
-                this.conquestSystem = new ConquestSystem(this.renderer.app, this.websocketClient);
-                this.renderer.addLayer(this.conquestSystem.getLayer());
+                const conquestContainer = this.renderer.setupConquestContainer();
+                this.conquestSystem = new ConquestSystem(this.renderer.app, this.websocketClient, conquestContainer);
                 
                 // Initialize debug components
                 this.latencyMonitor = new LatencyMonitor(this.websocketClient);

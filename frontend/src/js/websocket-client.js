@@ -94,7 +94,7 @@ class WebSocketClient {
     }
     
     // Matchmaking - get room and player ID from backend
-    async matchPlayer(playerName = null) {
+    async matchPlayer(playerName = null, devMode = false) {
         try {
             const response = await fetch(`${EnvConfig.API_URL}/match`, {
                 method: 'POST',
@@ -102,7 +102,8 @@ class WebSocketClient {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    player_id: playerName || `player_${Date.now()}`
+                    player_id: playerName || `player_${Date.now()}`,
+                    dev_mode: devMode
                 })
             });
             
@@ -124,10 +125,10 @@ class WebSocketClient {
     }
     
     // Connect with matchmaking
-    async connectWithMatchmaking(playerName = null) {
+    async connectWithMatchmaking(playerName = null, devMode = false) {
         try {
             // First, get room and player ID through matchmaking
-            const matchResult = await this.matchPlayer(playerName);
+            const matchResult = await this.matchPlayer(playerName, devMode);
             
             // Then connect to WebSocket
             await this.connect();

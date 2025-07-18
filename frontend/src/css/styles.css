@@ -120,6 +120,25 @@ body {
     transform: translateY(0);
 }
 
+/* Dev test button styling */
+.menu-btn.dev-btn {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    box-shadow: 0 4px 15px rgba(155, 89, 182, 0.3);
+    position: relative;
+}
+
+.menu-btn.dev-btn::before {
+    content: "🔧";
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.menu-btn.dev-btn:hover {
+    box-shadow: 0 6px 20px rgba(155, 89, 182, 0.4);
+}
+
 /* Modal styles */
 .modal {
     position: fixed;

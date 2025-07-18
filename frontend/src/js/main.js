@@ -11,6 +11,7 @@ class GameApp {
         this.showScreen = this.showScreen.bind(this);
         this.onSinglePlayerClick = this.onSinglePlayerClick.bind(this);
         this.onMultiplayerClick = this.onMultiplayerClick.bind(this);
+        this.onDevTestClick = this.onDevTestClick.bind(this);
         this.onSettingsClick = this.onSettingsClick.bind(this);
     }
     
@@ -44,6 +45,7 @@ class GameApp {
         // Menu buttons
         const singlePlayerBtn = document.getElementById('single-player-btn');
         const multiplayerBtn = document.getElementById('multiplayer-btn');
+        const devTestBtn = document.getElementById('dev-test-btn');
         const settingsBtn = document.getElementById('settings-btn');
         
         if (singlePlayerBtn) {
@@ -51,6 +53,9 @@ class GameApp {
         }
         if (multiplayerBtn) {
             multiplayerBtn.addEventListener('click', this.onMultiplayerClick);
+        }
+        if (devTestBtn) {
+            devTestBtn.addEventListener('click', this.onDevTestClick);
         }
         if (settingsBtn) {
             settingsBtn.addEventListener('click', this.onSettingsClick);
@@ -154,6 +159,30 @@ class GameApp {
         } catch (error) {
             console.error('Failed to start multiplayer game:', error);
             this.uiManager.showNotification('Failed to connect to multiplayer', 'error');
+        }
+    }
+    
+    async onDevTestClick() {
+        try {
+            this.uiManager.showNotification('Starting dev test match with 300 tiles and Kingdom tech...', 'info');
+            
+            // Initialize game in dev test mode
+            this.game = new Game({
+                mode: 'multiplayer',
+                playerCount: 4,
+                aiOpponents: 0,
+                devMode: true
+            });
+            
+            // Expose game instance globally for unit commands
+            window.gameInstance = this.game;
+            
+            await this.game.init();
+            this.showScreen('game-screen');
+            
+        } catch (error) {
+            console.error('Failed to start dev test game:', error);
+            this.uiManager.showNotification('Failed to start dev test game', 'error');
         }
     }
     

@@ -31,6 +31,7 @@ class Room:
     loop_task: Optional[asyncio.Task] = None
     unit_system: UnitSystem = field(default_factory=UnitSystem)
     conquest_system: ConquestSystem = field(default_factory=ConquestSystem)
+    dev_mode: bool = False
 
     def __post_init__(self):
         """Initialize room after creation."""
@@ -53,6 +54,17 @@ class Room:
             
         # New player
         from .models.game_state import PlayerStats
+        
+        # Set starting resources and tech level based on dev mode
+        if self.dev_mode:
+            starting_gold = 1000
+            starting_food = 1000
+            starting_tech = TechLevel.KINGDOM
+        else:
+            starting_gold = 100
+            starting_food = 100
+            starting_tech = TechLevel.MANOR
+        
         player = Player(
             id=len(self.players),
             name=player_id,
@@ -60,11 +72,11 @@ class Room:
             is_connected=True,
             is_eliminated=False,
             resources={
-                "gold": 100,
-                "food": 100,
+                "gold": starting_gold,
+                "food": starting_food,
                 "faith": 0
             },
-            tech_level=TechLevel.MANOR,
+            tech_level=starting_tech,
             capital_city=None,
             stats=PlayerStats()  # Initialize stats to prevent None access
         )
@@ -168,16 +180,21 @@ class Room:
         # Place capital cities in quadrants
         self._place_capital_cities()
         
-        # Place field tiles around capitals
-        self._place_field_tiles_around_capitals()
+        if self.dev_mode:
+            # Dev mode: place 300 tiles total for extensive testing
+            self._place_dev_mode_tiles()
+        else:
+            # Normal mode: place initial tiles as before
+            # Place field tiles around capitals
+            self._place_field_tiles_around_capitals()
+            
+            # Place some city tiles for variety
+            self._place_city_tiles()
+            
+            # Scatter resource tiles randomly
+            self._scatter_resource_tiles()
         
-        # Place some city tiles for variety
-        self._place_city_tiles()
-        
-        # Scatter resource tiles randomly
-        self._scatter_resource_tiles()
-        
-        print(f"Game map initialized with {len(self.state.tiles)} tiles")
+        print(f"Game map initialized with {len(self.state.tiles)} tiles (dev_mode: {self.dev_mode})")
         
     def _place_capital_cities(self):
         """Place capital cities in the four quadrants of the map."""
@@ -420,6 +437,77 @@ class Room:
         
         return edge_mappings.get(tile_type, ["field", "field", "field", "field"])
         
+    def _place_dev_mode_tiles(self):
+        """Place 800 tiles for dev mode testing - includes variety of all tile types."""
+        from .models.tile import Resources, TileMetadata, TileType
+        import random
+        
+        # Define tile distribution for dev mode (aiming for ~800 tiles total)
+        tile_distribution = {
+            TileType.FIELD: 400,        # Basic terrain (largest portion)
+            TileType.CITY: 150,         # Economic tiles  
+            TileType.BARRACKS: 100,     # Military tiles
+            TileType.WATCHTOWER: 50,    # Defense tiles
+            TileType.MINE: 75,          # Resource tiles
+            TileType.ORCHARD: 75,       # Resource tiles
+            TileType.MONASTERY: 35,     # Faith tiles
+            TileType.MARSH: 325          # Terrain obstacles
+        }
+        
+        for tile_type, count in tile_distribution.items():
+            placed = 0
+            attempts = 0
+            max_attempts = count * 20  # Give plenty of attempts to place tiles
+            
+            while placed < count and attempts < max_attempts:
+                x = random.randint(0, self.state.game_settings.map_size - 1)
+                y = random.randint(0, self.state.game_settings.map_size - 1)
+                
+                # Don't place tiles too close to capitals or on existing tiles
+                if not self._is_position_occupied(x, y):
+                    # Get appropriate properties for this tile type
+                    resources, hp, metadata = self._get_resource_tile_properties(tile_type)
+                    
+                    # For non-resource tiles, use different properties
+                    if tile_type not in [TileType.MINE, TileType.ORCHARD, TileType.MONASTERY, TileType.MARSH]:
+                        if tile_type == TileType.FIELD:
+                            resources = Resources(gold=1, food=1, faith=0)
+                            hp = 100
+                            metadata = TileMetadata(can_train=False, worker_capacity=1)
+                        elif tile_type == TileType.CITY:
+                            resources = Resources(gold=3, food=1, faith=0)
+                            hp = 200
+                            metadata = TileMetadata(can_train=False, worker_capacity=2)
+                        elif tile_type == TileType.BARRACKS:
+                            resources = Resources(gold=0, food=0, faith=0)
+                            hp = 300
+                            metadata = TileMetadata(can_train=True, worker_capacity=0)
+                        elif tile_type == TileType.WATCHTOWER:
+                            resources = Resources(gold=0, food=0, faith=0)
+                            hp = 400
+                            metadata = TileMetadata(can_train=False, worker_capacity=0, aura_radius=2)
+                    
+                    dev_tile = Tile(
+                        id=f"{x},{y}",
+                        type=tile_type,
+                        x=x,
+                        y=y,
+                        edges=self._get_tile_edges(tile_type),
+                        hp=hp,
+                        max_hp=hp,
+                        owner=None,
+                        resources=resources,
+                        placed_at=datetime.now().timestamp(),
+                        metadata=metadata
+                    )
+                    
+                    self.state.tiles.append(dev_tile)
+                    placed += 1
+                
+                attempts += 1
+        
+        print(f"Dev mode: placed {len(self.state.tiles) - 4} tiles (~800 target) (excluding capitals)")
+        
     def _generate_tile_options(self):
         """Generate 3 random tile options for the current player."""
         from .models.tile import TileType
@@ -513,7 +601,14 @@ class Room:
             # Update conquest system auras based on current tiles
             self.conquest_system.update_auras(self.state.tiles, self.unit_system.units)
             
-            events = self.unit_system.update_units(0.1, self.conquest_system)  # deltaTime = 0.1 seconds
+            # Pass tiles to unit system for tile targeting in combat
+            events = self.unit_system.update_units(0.1, self.state.tiles, self.conquest_system)
+            
+            # Handle combat events - especially tile attacks
+            if events and events.get('combat_events'):
+                for combat_event in events['combat_events']:
+                    if combat_event['type'] == 'tile_attack':
+                        await self._handle_tile_attack_event(combat_event)
             
             # Process movement events to sync unit system state back to game state
             if events and events.get('movement_events'):
@@ -725,6 +820,59 @@ class Room:
                 print(f"Failed to send tiles update to {player_id}: {e}")
         
         print(f"Broadcast tiles update to {len(self.connections)} clients")
+    
+    async def _handle_tile_attack_event(self, combat_event: Dict):
+        """Handle tile attack events from the combat system."""
+        from .models.tile import TileType
+        
+        target_tile_id = combat_event['target_id']
+        damage = combat_event['damage']
+        attacker_id = combat_event['attacker_id']
+        
+        # Find the target tile
+        target_tile = None
+        for tile in self.state.tiles:
+            if tile.id == target_tile_id:
+                target_tile = tile
+                break
+        
+        if not target_tile:
+            return
+        
+        # If this is a capital city, update player's capital HP
+        if target_tile.type == TileType.CAPITAL_CITY and target_tile.owner is not None:
+            # Find the player who owns this capital
+            target_player = None
+            for player in self.state.players:
+                if player.id == target_tile.owner:
+                    target_player = player
+                    break
+            
+            if target_player:
+                # Calculate capital HP ratio and apply to player
+                hp_ratio = target_tile.hp / target_tile.max_hp if target_tile.max_hp > 0 else 0
+                target_player.capital_hp = int(target_player.capital_hp * hp_ratio)
+                
+                # Ensure capital HP doesn't go below 0
+                target_player.capital_hp = max(0, target_player.capital_hp)
+        
+        # Broadcast tile attack event to all players
+        await self._broadcast_message({
+            "type": "tile_attack",
+            "payload": {
+                "attacker_id": attacker_id,
+                "target_tile_id": target_tile_id,
+                "damage": damage,
+                "tile_hp": target_tile.hp,
+                "tile_max_hp": target_tile.max_hp,
+                "tile_destroyed": target_tile.hp <= 0,
+                "attacker_position": combat_event['position'],
+                "target_position": {"x": target_tile.x, "y": target_tile.y},
+                "timestamp": combat_event['timestamp']
+            }
+        })
+        
+        logger.info(f"Automatic tile attack: unit {attacker_id} attacked tile {target_tile_id} for {damage} damage")
     
     async def _handle_player_elimination(self, player_id: int):
         """Handle player elimination from the game."""
@@ -1183,12 +1331,12 @@ class RoomManager:
         self.rooms: Dict[str, Room] = {}
         self.cleanup_task: Optional[asyncio.Task] = None
     
-    def create_room(self, room_id: Optional[str] = None) -> Room:
+    def create_room(self, room_id: Optional[str] = None, dev_mode: bool = False) -> Room:
         """Create a new room."""
         if room_id is None:
             room_id = str(uuid.uuid4())
             
-        room = Room(room_id=room_id)
+        room = Room(room_id=room_id, dev_mode=dev_mode)
         self.rooms[room_id] = room
         
         # Start cleanup task if not running
@@ -1201,11 +1349,11 @@ class RoomManager:
         """Get a room by ID."""
         return self.rooms.get(room_id)
     
-    def get_or_create_room(self, room_id: str) -> Room:
+    def get_or_create_room(self, room_id: str, dev_mode: bool = False) -> Room:
         """Get existing room or create new one."""
         room = self.get_room(room_id)
         if room is None:
-            room = self.create_room(room_id)
+            room = self.create_room(room_id, dev_mode)
         return room
     
     def remove_room(self, room_id: str) -> bool:

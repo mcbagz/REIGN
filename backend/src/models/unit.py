@@ -311,13 +311,13 @@ class UnitSystem:
         
         return completed_units
     
-    def process_combat(self, current_time: float, conquest_system=None) -> List[Dict]:
+    def process_combat(self, current_time: float, all_tiles: List = None, conquest_system=None) -> List[Dict]:
         """Process combat between units using spatial hash. Returns combat events."""
         # Update spatial hash with current positions
         self.combat_system.update_spatial_hash(self.units)
         
-        # Process combat tick
-        combat_events = self.combat_system.process_combat_tick(self.units, current_time, conquest_system)
+        # Process combat tick with tiles support
+        combat_events = self.combat_system.process_combat_tick(self.units, current_time, all_tiles, conquest_system)
         
         # Convert CombatEvent dataclasses to dictionaries for WebSocket serialization
         serialized_events = []
@@ -464,7 +464,7 @@ class UnitSystem:
         
         return DamageCalculator.calculate_combat_outcome(unit1, unit2)
     
-    def update_units(self, delta_time: float, conquest_system=None) -> Dict[str, List]:
+    def update_units(self, delta_time: float, all_tiles: List = None, conquest_system=None) -> Dict[str, List]:
         """Update all unit systems. Returns events for each update type."""
         events = {
             "training_completed": [],
@@ -481,8 +481,8 @@ class UnitSystem:
         movement_events = self.update_unit_movement(delta_time)
         events["movement_events"] = movement_events
         
-        # Update combat
-        combat_events = self.process_combat(current_time, conquest_system)
+        # Update combat with tiles support
+        combat_events = self.process_combat(current_time, all_tiles, conquest_system)
         events["combat_events"] = combat_events
         
         return events 

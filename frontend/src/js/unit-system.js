@@ -317,11 +317,27 @@ class UnitSystem {
             return;
         }
         
-        // Update unit data
-        unitContainer.unitData = unitData;
-        
-        // Update health bar - handle both camelCase and snake_case
+        // Update unit data stored in container with fresh data
         const maxHp = unitData.maxHp || unitData.max_hp || 100;
+        const updatedUnitData = {
+            id: unitData.id,
+            type: unitData.type,
+            owner: unitData.owner,
+            position: unitData.position,
+            hp: unitData.hp,
+            maxHp: maxHp,
+            attack: unitData.attack,
+            defense: unitData.defense,
+            speed: unitData.speed,
+            range: unitData.range,
+            status: unitData.status,
+            createdAt: unitData.createdAt || unitData.created_at
+        };
+        
+        // Ensure the container's unitData is completely updated
+        unitContainer.unitData = updatedUnitData;
+        
+        // Update health bar
         this.updateHealthBar(unitData.id, unitData.hp, maxHp);
         
         // Handle death
@@ -338,6 +354,8 @@ class UnitSystem {
         if (currentPos.x !== unitData.position.x || currentPos.y !== unitData.position.y) {
             this.moveUnit(unitData.id, unitData.position);
         }
+        
+        console.log(`Updated unit ${unitData.id}: HP ${unitData.hp}/${maxHp}`);
     }
     
     startDeathAnimation(unitId) {

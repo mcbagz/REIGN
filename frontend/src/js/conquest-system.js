@@ -2,18 +2,15 @@
  * ConquestSystem - Manages conquest-related UI elements and WebSocket events
  */
 class ConquestSystem {
-    constructor(app, wsClient) {
+    constructor(app, wsClient, conquestContainer) {
         this.app = app;
         this.wsClient = wsClient;
+        this.conquestLayer = conquestContainer; // Use provided container from renderer
         
         // UI Components
         this.capitalHpBars = new Map(); // position -> CapitalHpBar
         this.auraOverlays = new Map(); // position -> AuraOverlay
         this.bannerLayer = null;
-        
-        // Container for all conquest elements
-        this.conquestLayer = new PIXI.Container();
-        this.conquestLayer.zIndex = 50; // Above tiles but below UI
         
         // Initialize
         this.setupBannerLayer();
@@ -328,11 +325,6 @@ class ConquestSystem {
         console.log('Victory sound');
     }
     
-    // Get the conquest layer container
-    getLayer() {
-        return this.conquestLayer;
-    }
-    
     // Update screen size
     updateScreenSize(width, height) {
         this.bannerLayer.updateScreenSize(width, height);
@@ -342,7 +334,7 @@ class ConquestSystem {
     destroy() {
         this.clearAllElements();
         this.bannerLayer.destroy();
-        this.conquestLayer.destroy();
+        // Note: conquestLayer is owned by renderer, don't destroy it here
     }
 }
 

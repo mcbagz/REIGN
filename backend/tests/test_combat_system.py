@@ -214,6 +214,50 @@ class TestCombatSystem:
         assert target.status == UnitStatus.DEAD
         assert target.hp == 0
 
+    def test_automatic_tile_attack(self):
+        """Test that units automatically attack enemy tiles when no enemy units are in range."""
+        combat_system = CombatSystem()
+        
+        # Create an attacker unit
+        attacker = Unit.create_unit(UnitType.INFANTRY, owner=1, position=Position(x=10, y=10))
+        combat_system.add_unit(attacker)
+        
+        # Create an enemy tile in range
+        from src.models.tile import Tile, TileType, Resources
+        enemy_tile = Tile(
+            id="11,10",
+            type=TileType.CITY,
+            x=11,
+            y=10,
+            edges=["city", "field", "city", "field"],
+            hp=100,
+            max_hp=100,
+            owner=2,  # Different owner
+            resources=Resources(gold=0, food=0, faith=0),
+            placed_at=time.time()
+        )
+        
+        all_units = {attacker.id: attacker}
+        all_tiles = [enemy_tile]
+        current_time = time.time()
+        
+        # Process combat tick with tiles
+        events = combat_system.process_combat_tick(all_units, current_time, all_tiles)
+        
+        # Should have created a tile attack event
+        assert len(events) == 1
+        tile_attack_event = events[0]
+        assert tile_attack_event.type == "tile_attack"
+        assert tile_attack_event.attacker_id == attacker.id
+        assert tile_attack_event.target_id == enemy_tile.id
+        assert tile_attack_event.damage > 0
+        
+        # Tile should have taken damage
+        assert enemy_tile.hp < 100
+        
+        # Unit should be in attacking status
+        assert attacker.status == UnitStatus.ATTACKING
+
 
 class TestDamageCalculator:
     """Test damage calculation utilities."""
