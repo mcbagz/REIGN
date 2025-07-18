@@ -33,8 +33,8 @@ class UnitStatus(str, Enum):
 
 class Position(BaseModel):
     """Position on the game board."""
-    x: int = Field(ge=0, le=39, description="X coordinate on the 40x40 grid")
-    y: int = Field(ge=0, le=39, description="Y coordinate on the 40x40 grid")
+    x: int = Field(ge=0, le=19, description="X coordinate on the 20x20 grid")
+    y: int = Field(ge=0, le=19, description="Y coordinate on the 20x20 grid")
 
 
 class Target(BaseModel):
@@ -124,7 +124,7 @@ class Unit(BaseModel):
         """Create a new unit with default stats based on type."""
         global _next_unit_id
         
-        # Default unit stats (matching frontend config)
+        # Default unit stats (matching game design document)
         unit_stats = {
             UnitType.INFANTRY: {
                 "hp": 100, "attack": 20, "defense": 15, "speed": 1.0, "range": 1,
@@ -135,7 +135,7 @@ class Unit(BaseModel):
                 )
             },
             UnitType.ARCHER: {
-                "hp": 75, "attack": 25, "defense": 10, "speed": 1.5, "range": 2,
+                "hp": 75, "attack": 25, "defense": 10, "speed": 1.2, "range": 2,
                 "cost": UnitCost(gold=60, food=30),
                 "training_time": 12.0,
                 "effectiveness": CombatEffectiveness(
@@ -151,7 +151,7 @@ class Unit(BaseModel):
                 )
             },
             UnitType.SIEGE: {
-                "hp": 120, "attack": 50, "defense": 5, "speed": 0.5, "range": 2,
+                "hp": 120, "attack": 50, "defense": 5, "speed": 0.3, "range": 2,
                 "cost": UnitCost(gold=200, food=0),
                 "training_time": 20.0,
                 "effectiveness": CombatEffectiveness(

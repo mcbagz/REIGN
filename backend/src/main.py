@@ -284,6 +284,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
             "timestamp": datetime.now().isoformat()
         }).decode())
         
+        # If it's this player's turn and tile offers exist, send them the tile offers
+        if room.state and player_numeric_id is not None and room.state.current_player == player_numeric_id:
+            # Re-generate tile offers for the current player (in case they reconnected)
+            room._generate_tile_offers_for_player(player_numeric_id)
+        
         # Notify other players (not the player who just joined)
         await broadcast_to_others(room, player_id, {
             "type": "player_joined",
@@ -397,9 +402,13 @@ async def handle_message(room: Room, player_id: str, message: dict, websocket: W
                 "placeTile": handle_place_tile,
                 "moveUnit": handle_move_unit,
                 "trainUnit": handle_train_unit,
-                "placeWorker": handle_place_worker,
+                "placeFollower": handle_place_follower,
+                "recallFollower": handle_recall_follower,
                 "raidTile": handle_raid_tile,
-                "attackTile": handle_attack_tile
+                "attackTile": handle_attack_tile,
+                "advanceTechLevel": handle_advance_tech_level,
+                "purchaseTechUpgrade": handle_purchase_tech_upgrade,
+                "useSpecialAbility": handle_use_special_ability
             }
             
             handler = command_handlers.get(action)
@@ -450,42 +459,34 @@ async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: W
             await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
             return
 
-        # **REAL-TIME TILE PLACEMENT**: No turn restriction for placing tiles from personal bank
-        # Players can place tiles from their personal bank onto the grid at any time
-        # Only tile SELECTION from offers is turn-based (15-second cycles)
+        # **TILE PLACEMENT RULES**: 
+        # Players can always place tiles from their tile bank (stored tiles)
+        # The 15-second turn is only for SELECTING which tiles to add to their bank
+        # Once tiles are in the bank, they can be placed anytime
+        is_current_turn = (room.state.current_player == current_player.id)
 
         # Check if position is already occupied
         if any(tile.x == x and tile.y == y for tile in room.state.tiles):
             await send_error_response(websocket, "Position already occupied", "POSITION_OCCUPIED")
             return
 
-        # Check adjacency (must touch at least one existing tile)
-        if not _has_adjacent_tile(x, y, room.state.tiles):
-            await send_error_response(websocket, "Tile must be adjacent to existing tiles", "NOT_ADJACENT")
+        # Check adjacency (must touch at least one tile owned by the player)
+        if not _has_adjacent_player_tile(x, y, room.state.tiles, current_player.id):
+            await send_error_response(websocket, "Tile must be adjacent to your territory", "NOT_ADJACENT_TO_TERRITORY")
             return
 
-        # Validate tile type against current tile options
-        if tile_type not in room.state.current_tile_options:
+        # Validate tile type is a valid game tile type
+        from .models.tile import TileType
+        try:
+            tile_type_enum = TileType(tile_type)
+        except ValueError:
             await send_error_response(websocket, f"Invalid tile type: {tile_type}", "INVALID_TILE_TYPE")
             return
+        
+        # No resource cost for placing tiles - tiles are free once in bank
 
-        # Get tile cost and validate player can afford it
-        tile_cost = _get_tile_cost(tile_type)
-        if not _can_afford_tile(current_player, tile_cost):
-            await send_error_response(websocket, "Insufficient resources", "INSUFFICIENT_RESOURCES")
-            return
-
-        # Deduct resources
-        current_player.resources["gold"] -= tile_cost["gold"]
-        current_player.resources["food"] -= tile_cost["food"]
-        current_player.resources["faith"] -= tile_cost["faith"]
-
-        # Get tile properties
+        # Get tile properties using the original string tile_type
         tile_properties = _get_tile_properties(tile_type)
-
-        # Create new tile with proper type enum
-        from .models.tile import TileType
-        tile_type_enum = TileType(tile_type)
         
         new_tile = Tile(
             id=f"{x},{y}",
@@ -508,15 +509,38 @@ async def handle_place_tile(room: Room, player_id: str, data: dict, websocket: W
         # Update current player's stats
         current_player.stats.tiles_placed += 1
 
-        # **REAL-TIME LOGIC**: No turn advancement for tile placement
-        # Turn advancement is handled by the global 15-second timer only
+        # No turn advancement when placing tiles from bank
+        # Turn advancement only happens on the 15-second timer for tile selection
+        logger.info(f"Player {player_id} placed a tile from their bank at ({x}, {y})")
 
         # Broadcast tile placement to all players in room
+        # Manually create tile data to avoid serialization issues
+        tile_data = {
+            "id": new_tile.id,
+            "type": new_tile.type.value if hasattr(new_tile.type, 'value') else new_tile.type,
+            "x": new_tile.x,
+            "y": new_tile.y,
+            "edges": new_tile.edges,
+            "hp": new_tile.hp,
+            "max_hp": new_tile.max_hp,
+            "owner": new_tile.owner,
+            "resources": {
+                "gold": new_tile.resources.gold,
+                "food": new_tile.resources.food,
+                "faith": new_tile.resources.faith
+            },
+            "placed_at": new_tile.placed_at,
+            "metadata": {
+                "can_train": new_tile.metadata.can_train if new_tile.metadata else False,
+                "worker_capacity": new_tile.metadata.worker_capacity if new_tile.metadata else 0
+            } if new_tile.metadata else None
+        }
+        
         await broadcast_to_room(room, {
             "type": "tile_placed",
             "payload": {
                 "player_id": player_id,
-                "tile": new_tile.model_dump(),
+                "tile": tile_data,
                 "new_resources": current_player.resources
             },
             "timestamp": datetime.now().isoformat()
@@ -545,6 +569,30 @@ def _has_adjacent_tile(x: int, y: int, tiles) -> bool:
     
     for tile in tiles:
         if (tile.x, tile.y) in adjacent_positions:
+            return True
+    return False
+
+def _has_adjacent_player_tile(x: int, y: int, tiles, player_id: int) -> bool:
+    """Check if position has at least one adjacent tile owned by the player."""
+    if not tiles:  # First tile can be placed anywhere
+        return True
+        
+    # Check if player has any tiles at all
+    player_has_tiles = any(tile.owner == player_id for tile in tiles)
+    if not player_has_tiles:
+        # Player has no tiles yet, allow placement anywhere with adjacency
+        return _has_adjacent_tile(x, y, tiles)
+        
+    adjacent_positions = [
+        (x - 1, y),  # West
+        (x + 1, y),  # East
+        (x, y - 1),  # North
+        (x, y + 1)   # South
+    ]
+    
+    # Check if any adjacent tile is owned by the player
+    for tile in tiles:
+        if tile.owner == player_id and (tile.x, tile.y) in adjacent_positions:
             return True
     return False
 
@@ -626,14 +674,14 @@ def _get_tile_properties(tile_type: str) -> dict:
     
     return properties.get(tile_type, properties["field"])
 
-async def handle_place_worker(room: Room, player_id: str, data: dict, websocket: WebSocket):
-    """Handle worker placement"""
+async def handle_place_follower(room: Room, player_id: str, data: dict, websocket: WebSocket):
+    """Handle follower placement"""
     try:
-        worker_type = data.get("worker_type")
+        follower_type = data.get("follower_type")
         tile_id = data.get("tile_id")
         
-        if not worker_type or not tile_id:
-            raise ValueError("Missing required fields: worker_type, tile_id")
+        if not follower_type or not tile_id:
+            raise ValueError("Missing required fields: follower_type, tile_id")
         
         # Validate game state exists
         if room.state is None:
@@ -654,65 +702,96 @@ async def handle_place_worker(room: Room, player_id: str, data: dict, websocket:
         if not player or tile.owner != player.id:
             raise ValueError("You don't own this tile")
         
-        # Validate worker type
-        from .models.tile import WorkerType
+        # Validate follower type
+        from .models.follower import FollowerType
         try:
-            worker_type_enum = WorkerType(worker_type)
+            follower_type_enum = FollowerType(follower_type)
         except ValueError:
-            raise ValueError(f"Invalid worker type: {worker_type}")
+            raise ValueError(f"Invalid follower type: {follower_type}")
         
-        # Check if tile already has a worker
-        if tile.worker is not None:
-            raise ValueError(f"Tile {tile_id} already has a worker")
-        
-        # Check if player has enough resources to place worker
-        worker_cost = get_worker_cost(worker_type_enum)
-        if (player.resources.get("gold", 0) < worker_cost.gold or
-            player.resources.get("food", 0) < worker_cost.food or
-            player.resources.get("faith", 0) < worker_cost.faith):
-            raise ValueError("Insufficient resources to place worker")
-        
-        # Deduct resources
-        player.resources["gold"] -= worker_cost.gold
-        player.resources["food"] -= worker_cost.food
-        player.resources["faith"] -= worker_cost.faith
-        
-        # Create new worker
-        from .models.tile import Worker
-        new_worker = Worker(
-            id=len(room.state.units) + 1,  # Simple ID generation
-            type=worker_type_enum,
-            owner=player.id
+        # Use follower system to place follower
+        follower = room.follower_system.place_follower(
+            room.state, 
+            player.id, 
+            tile_id, 
+            follower_type_enum
         )
         
-        # Add worker to tile
-        tile.worker = new_worker
-        
-        # Update tile's resource generation based on worker
-        enhance_tile_resources(tile, worker_type_enum)
+        if not follower:
+            # Get detailed error from follower system
+            can_place, error_msg = room.follower_system.can_place_follower(
+                room.state, player.id, tile, follower_type_enum
+            )
+            raise ValueError(error_msg)
         
         room.state.last_update = datetime.now().timestamp()
         
         # Broadcast to all players in room
         await broadcast_to_room(room, {
-            "type": "worker_placed",
+            "type": "follower_placed",
             "payload": {
                 "player_id": player_id,
-                "worker_type": worker_type,
+                "player_numeric_id": player.id,
+                "follower_type": follower_type,
+                "follower_id": follower.id,
                 "tile_id": tile_id,
-                "worker_id": new_worker.id,
-                "new_resources": tile.resources.model_dump()
+                "followers_available": player.followers_available
             },
             "timestamp": datetime.now().isoformat()
         })
         
-        logger.info(f"Worker placed by {player_id}: {worker_type} on {tile_id}")
+        logger.info(f"Follower placed by {player_id}: {follower_type} on {tile_id}")
         
     except Exception as e:
         logger.error(f"Error placing worker: {e}")
         await websocket.send_text(orjson.dumps({
             "type": "error",
-            "payload": {"message": f"Worker placement failed: {str(e)}"},
+            "payload": {"message": f"Follower placement failed: {str(e)}"},
+            "timestamp": datetime.now().isoformat()
+        }).decode())
+
+async def handle_recall_follower(room: Room, player_id: str, data: dict, websocket: WebSocket):
+    """Handle follower recall"""
+    try:
+        follower_id = data.get("follower_id")
+        
+        if not follower_id:
+            raise ValueError("Missing required field: follower_id")
+        
+        # Validate game state exists
+        if room.state is None:
+            raise ValueError("Game not started yet")
+        
+        # Find the player
+        player = find_player_by_name(room.state.players, player_id)
+        if not player:
+            raise ValueError("Player not found")
+        
+        # Start recall
+        if not room.follower_system.start_recall(room.state, player.id, follower_id):
+            raise ValueError("Failed to start follower recall")
+        
+        room.state.last_update = datetime.now().timestamp()
+        
+        # Broadcast to all players in room
+        await broadcast_to_room(room, {
+            "type": "follower_recalled",
+            "payload": {
+                "player_id": player_id,
+                "player_numeric_id": player.id,
+                "follower_id": follower_id,
+                "recall_duration": 10.0  # 10 seconds
+            },
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        logger.info(f"Follower recall started by {player_id}: {follower_id}")
+        
+    except Exception as e:
+        logger.error(f"Error recalling follower: {e}")
+        await websocket.send_text(orjson.dumps({
+            "type": "error",
+            "payload": {"message": f"Follower recall failed: {str(e)}"},
             "timestamp": datetime.now().isoformat()
         }).decode())
 
@@ -1327,6 +1406,128 @@ async def broadcast_to_others(room: Room, exclude_player_id: str, message: dict)
     # Remove disconnected connections
     for player_id in disconnected:
         room.remove_player(player_id)
+
+async def handle_advance_tech_level(room: Room, player_id: str, data: dict, websocket: WebSocket):
+    """Handle tech level advancement"""
+    try:
+        target_level = data.get("target_level")
+        if not target_level:
+            await send_error_response(websocket, "Missing target level", "MISSING_TARGET_LEVEL")
+            return
+        
+        # Find the player
+        player = find_player_by_name(room.state.players, player_id)
+        if not player:
+            await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
+            return
+        
+        # Import TechLevel enum
+        from .models.tech_tree import TechLevel
+        try:
+            tech_level_enum = TechLevel(target_level)
+        except ValueError:
+            await send_error_response(websocket, f"Invalid tech level: {target_level}", "INVALID_TECH_LEVEL")
+            return
+        
+        # Attempt to advance tech level
+        success, message = room.tech_tree_system.advance_tech_level(room.state, player.id, tech_level_enum)
+        
+        if success:
+            # Broadcast to all players
+            await broadcast_to_room(room, {
+                "type": "tech_level_advanced",
+                "payload": {
+                    "player_id": player_id,
+                    "player_numeric_id": player.id,
+                    "new_level": target_level,
+                    "message": message
+                },
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            logger.info(f"Player {player_id} advanced to {target_level}")
+        else:
+            await send_error_response(websocket, message, "TECH_ADVANCE_FAILED")
+            
+    except Exception as e:
+        logger.error(f"Error advancing tech level: {e}")
+        await send_error_response(websocket, "Tech advancement failed", "TECH_ADVANCE_ERROR")
+
+async def handle_purchase_tech_upgrade(room: Room, player_id: str, data: dict, websocket: WebSocket):
+    """Handle tech upgrade purchase"""
+    try:
+        upgrade_id = data.get("upgrade_id")
+        if not upgrade_id:
+            await send_error_response(websocket, "Missing upgrade ID", "MISSING_UPGRADE_ID")
+            return
+        
+        # Find the player
+        player = find_player_by_name(room.state.players, player_id)
+        if not player:
+            await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
+            return
+        
+        # Attempt to purchase upgrade
+        success, message = room.tech_tree_system.purchase_upgrade(room.state, player.id, upgrade_id)
+        
+        if success:
+            # Broadcast to all players
+            await broadcast_to_room(room, {
+                "type": "tech_upgrade_purchased",
+                "payload": {
+                    "player_id": player_id,
+                    "player_numeric_id": player.id,
+                    "upgrade_id": upgrade_id,
+                    "message": message
+                },
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            logger.info(f"Player {player_id} purchased upgrade {upgrade_id}")
+        else:
+            await send_error_response(websocket, message, "UPGRADE_PURCHASE_FAILED")
+            
+    except Exception as e:
+        logger.error(f"Error purchasing upgrade: {e}")
+        await send_error_response(websocket, "Upgrade purchase failed", "UPGRADE_PURCHASE_ERROR")
+
+async def handle_use_special_ability(room: Room, player_id: str, data: dict, websocket: WebSocket):
+    """Handle special ability usage"""
+    try:
+        ability_id = data.get("ability_id")
+        if not ability_id:
+            await send_error_response(websocket, "Missing ability ID", "MISSING_ABILITY_ID")
+            return
+        
+        # Find the player
+        player = find_player_by_name(room.state.players, player_id)
+        if not player:
+            await send_error_response(websocket, "Player not found", "PLAYER_NOT_FOUND")
+            return
+        
+        # Attempt to use ability
+        success, message = room.tech_tree_system.use_special_ability(room.state, player.id, ability_id)
+        
+        if success:
+            # Broadcast to all players
+            await broadcast_to_room(room, {
+                "type": "special_ability_used",
+                "payload": {
+                    "player_id": player_id,
+                    "player_numeric_id": player.id,
+                    "ability_id": ability_id,
+                    "message": message
+                },
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            logger.info(f"Player {player_id} used ability {ability_id}")
+        else:
+            await send_error_response(websocket, message, "ABILITY_USE_FAILED")
+            
+    except Exception as e:
+        logger.error(f"Error using ability: {e}")
+        await send_error_response(websocket, "Ability use failed", "ABILITY_USE_ERROR")
 
 @app.on_event("startup")
 async def startup_event():

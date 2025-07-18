@@ -4,8 +4,8 @@ const GameConfig = {
     CANVAS_WIDTH: 1200,
     CANVAS_HEIGHT: 800,
     TILE_SIZE: 128,
-    GRID_WIDTH: 40,
-    GRID_HEIGHT: 40,
+    GRID_WIDTH: 20,
+    GRID_HEIGHT: 20,
     
     // Game timing
     TILE_PLACEMENT_INTERVAL: 15000, // 15 seconds
@@ -26,7 +26,7 @@ const GameConfig = {
     },
     GAME_SETTINGS: {
         MAX_PLAYERS: 4,
-        MAP_SIZE: 40,
+        MAP_SIZE: 20,
         TURN_DURATION: 15.0,
         TILE_BANK_SIZE: 3,
         RESOURCE_TICK_INTERVAL: 1000

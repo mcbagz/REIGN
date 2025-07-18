@@ -14,6 +14,7 @@ from .models.game_state import GameState, Player, GameStatus, GameSettings, Tech
 from .models.unit import Unit, UnitSystem
 from .models.tile import Tile
 from .conquest_system import ConquestSystem
+from .follower_system import FollowerSystem
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class Room:
     loop_task: Optional[asyncio.Task] = None
     unit_system: UnitSystem = field(default_factory=UnitSystem)
     conquest_system: ConquestSystem = field(default_factory=ConquestSystem)
+    follower_system: FollowerSystem = field(default_factory=FollowerSystem)
     dev_mode: bool = False
 
     def __post_init__(self):
@@ -78,7 +80,9 @@ class Room:
             },
             tech_level=starting_tech,
             capital_city=None,
-            stats=PlayerStats()  # Initialize stats to prevent None access
+            stats=PlayerStats(),  # Initialize stats to prevent None access
+            followers_available=8,  # Each player starts with 8 followers
+            tech_tree=None  # Will be initialized when game starts
         )
         
         self.players[player_id] = player
@@ -96,9 +100,20 @@ class Room:
             self.state.status = GameStatus.PLAYING
             self.state.game_start_time = datetime.now().timestamp()
             
-        # Add player to state if it exists
+        # Add player to state if it exists and they're not already in it
         if self.state:
-            self.state.players.append(player)
+            # Check if player is already in the state (by ID)
+            player_exists = any(p.id == player.id for p in self.state.players)
+            if not player_exists:
+                logger.info(f"Adding player {player.id} ({player_id}) to game state")
+                self.state.players.append(player)
+            else:
+                # Update the existing player's connection status
+                logger.info(f"Player {player.id} ({player_id}) already exists in game state, updating connection status")
+                for p in self.state.players:
+                    if p.id == player.id:
+                        p.is_connected = True
+                        break
             
         return True
     
@@ -124,6 +139,9 @@ class Room:
             return
             
         # Initialize basic game state structure
+        players_list = list(self.players.values())
+        logger.info(f"Initializing game state with {len(players_list)} players: {[p.id for p in players_list]}")
+        
         self.state = GameState(
             game_id=self.room_id,
             status=GameStatus.WAITING,
@@ -132,7 +150,7 @@ class Room:
             turn_time_remaining=15.0,
             game_start_time=datetime.now().timestamp(),
             last_update=datetime.now().timestamp(),
-            players=list(self.players.values()),
+            players=players_list,
             tiles=[],
             units=[],
             available_tiles=[],
@@ -142,7 +160,7 @@ class Room:
                 max_players=4,
                 turn_duration=15.0,
                 max_game_duration=1800.0,
-                map_size=40,
+                map_size=20,
                 resource_update_interval=1.0
             ),
             events=[]
@@ -154,13 +172,73 @@ class Room:
         # Generate initial tile options for the first player
         self.state.current_tile_options = self._generate_tile_options()
         
-        # Generate initial tile offers for the first player
-        self._generate_tile_offers_for_player(self.state.current_player)
+        # Give each player a random starting tile in their bank
+        self._give_initial_tiles_to_players()
+        
+        # Initial tile offers will be sent at tick 1 to ensure all players are connected
         
         # Sync any existing units to the unit system
         self._sync_units_to_unit_system()
         
-        print(f"Game state initialized with {len(self.state.tiles)} tiles")
+        # Initialize tech trees for all players
+        for player in self.state.players:
+            self.tech_tree_system.initialize_player_tech_tree(player)
+        
+        # Set game status to PLAYING since we have enough players
+        self.state.status = GameStatus.PLAYING
+        
+        # Initialize turn time remaining
+        self.state.turn_time_remaining = 15.0
+        
+        print(f"Game state initialized with {len(self.state.tiles)} tiles, status: {self.state.status}")
+    
+    def _give_initial_tiles_to_players(self):
+        """Give each player a random starting tile in their bank."""
+        from .models.tile import TileType
+        import random
+        
+        # Available tile types for initial tiles
+        available_types = [
+            TileType.CITY,
+            TileType.FIELD,
+            TileType.MONASTERY,
+            TileType.BARRACKS,
+            TileType.WATCHTOWER
+        ]
+        
+        # Send a single random tile to each player's bank
+        for player_id in range(len(self.state.players)):
+            # Generate one random tile
+            tile_type = random.choice(available_types)
+            
+            initial_tile = {
+                "id": f"initial_{player_id}_{self.state.turn_number}",
+                "type": tile_type.value,
+                "resources": self._get_tile_resource_generation(tile_type),
+                "hp": self._get_tile_hp(tile_type),
+                "can_train": self._can_tile_train(tile_type)
+            }
+            
+            # Send initial tile to player
+            message = {
+                "type": "state",
+                "payload": {
+                    "initialTile": initial_tile
+                }
+            }
+            
+            # Find the player's connection and send the tile
+            for pid, connection in self.connections.items():
+                player = self.players.get(pid)
+                if player and player.id == player_id:
+                    try:
+                        import orjson
+                        message_str = orjson.dumps(message).decode()
+                        asyncio.create_task(connection.send_text(message_str))
+                        print(f"Sent initial {tile_type.value} tile to player {player_id}")
+                    except Exception as e:
+                        print(f"Failed to send initial tile to player {player_id}: {e}")
+                    break
     
     def _sync_units_to_unit_system(self):
         """Synchronize units from game state to unit system."""
@@ -184,15 +262,15 @@ class Room:
             # Dev mode: place 300 tiles total for extensive testing
             self._place_dev_mode_tiles()
         else:
-            # Normal mode: place initial tiles as before
-            # Place field tiles around capitals
+            # Normal mode: place initial tiles per game design
+            # Place field tiles adjacent to capitals (1 per capital)
             self._place_field_tiles_around_capitals()
             
-            # Place some city tiles for variety
-            self._place_city_tiles()
+            # Place 20 resource tiles (mines and orchards) at least 5 spaces from capitals
+            self._place_resource_tiles()
             
-            # Scatter resource tiles randomly
-            self._scatter_resource_tiles()
+            # Place 15 marsh tiles at least 3 spaces from capitals
+            self._place_marsh_tiles()
         
         print(f"Game map initialized with {len(self.state.tiles)} tiles (dev_mode: {self.dev_mode})")
         
@@ -202,10 +280,10 @@ class Room:
         
         # Capital positions matching client layout
         capital_positions = [
-            {"x": 10, "y": 10},  # Top-left quadrant
-            {"x": 30, "y": 10},  # Top-right quadrant  
-            {"x": 10, "y": 30},  # Bottom-left quadrant
-            {"x": 30, "y": 30}   # Bottom-right quadrant
+            {"x": 5, "y": 5},   # Top-left quadrant
+            {"x": 14, "y": 5},  # Top-right quadrant  
+            {"x": 5, "y": 14},  # Bottom-left quadrant
+            {"x": 14, "y": 14}  # Bottom-right quadrant
         ]
         
         for index, pos in enumerate(capital_positions):
@@ -238,129 +316,143 @@ class Room:
         print(f"Placed {len(capital_positions)} capital cities")
         
     def _place_field_tiles_around_capitals(self):
-        """Place field tiles around each capital city."""
+        """Place one field tile adjacent to each capital city."""
         from .models.tile import Resources, TileMetadata, TileType
         
         capital_positions = [
-            {"x": 10, "y": 10},
-            {"x": 30, "y": 10},
-            {"x": 10, "y": 30},
-            {"x": 30, "y": 30}
+            {"x": 5, "y": 5},
+            {"x": 14, "y": 5},
+            {"x": 5, "y": 14},
+            {"x": 14, "y": 14}
+        ]
+        
+        # Preferred positions for field tiles (one per capital)
+        field_offsets = [
+            {"x": 0, "y": 1},   # South for top-left capital
+            {"x": 0, "y": 1},   # South for top-right capital
+            {"x": 0, "y": -1},  # North for bottom-left capital
+            {"x": 0, "y": -1}   # North for bottom-right capital
         ]
         
         for capital_index, capital in enumerate(capital_positions):
-            # 8 surrounding positions
-            positions = [
-                {"x": capital['x'] - 1, "y": capital['y']},      # West
-                {"x": capital['x'] + 1, "y": capital['y']},      # East
-                {"x": capital['x'], "y": capital['y'] - 1},      # North
-                {"x": capital['x'], "y": capital['y'] + 1},      # South
-                {"x": capital['x'] - 1, "y": capital['y'] - 1},  # Northwest
-                {"x": capital['x'] + 1, "y": capital['y'] - 1},  # Northeast
-                {"x": capital['x'] - 1, "y": capital['y'] + 1},  # Southwest
-                {"x": capital['x'] + 1, "y": capital['y'] + 1}   # Southeast
-            ]
+            # Only place field for active players
+            if capital_index >= len(self.state.players):
+                continue
+                
+            owner_id = capital_index
+            offset = field_offsets[capital_index]
+            field_x = capital['x'] + offset['x']
+            field_y = capital['y'] + offset['y']
             
-            for pos_index, pos in enumerate(positions):
-                # Check bounds and avoid duplicates
-                if (0 <= pos['x'] < self.state.game_settings.map_size and 
-                    0 <= pos['y'] < self.state.game_settings.map_size and
-                    not self._is_position_occupied(pos['x'], pos['y'])):
-                    
-                    field_tile = Tile(
-                        id=f"{pos['x']},{pos['y']}",
-                        type=TileType.FIELD,
-                        x=pos['x'],
-                        y=pos['y'],
-                        edges=["field", "field", "field", "field"],
-                        hp=30,
-                        max_hp=30,
-                        owner=None,
-                        resources=Resources(gold=0, food=20, faith=0),
-                        placed_at=datetime.now().timestamp(),
-                        metadata=TileMetadata(can_train=False, worker_capacity=1)
-                    )
-                    
-                    self.state.tiles.append(field_tile)
-                    
-        print("Placed field tiles around capitals")
-        
-    def _place_city_tiles(self):
-        """Place city tiles at strategic positions."""
-        from .models.tile import Resources, TileMetadata, TileType
-        
-        city_positions = [
-            {"x": 15, "y": 15},
-            {"x": 25, "y": 15},
-            {"x": 15, "y": 25},
-            {"x": 25, "y": 25}
-        ]
-        
-        for index, pos in enumerate(city_positions):
-            if not self._is_position_occupied(pos['x'], pos['y']):
-                city_tile = Tile(
-                    id=f"{pos['x']},{pos['y']}",
-                    type=TileType.CITY,
-                    x=pos['x'],
-                    y=pos['y'],
-                    edges=["city", "city", "city", "city"],
-                    hp=60,
-                    max_hp=60,
-                    owner=None,
-                    resources=Resources(gold=30, food=30, faith=0),
+            # Check bounds and avoid duplicates
+            if (0 <= field_x < self.state.game_settings.map_size and 
+                0 <= field_y < self.state.game_settings.map_size and
+                not self._is_position_occupied(field_x, field_y)):
+                
+                field_tile = Tile(
+                    id=f"{field_x},{field_y}",
+                    type=TileType.FIELD,
+                    x=field_x,
+                    y=field_y,
+                    edges=["field", "field", "field", "field"],
+                    hp=30,
+                    max_hp=30,
+                    owner=owner_id,  # Field is owned by the same player as the capital
+                    resources=Resources(gold=0, food=20, faith=0),
                     placed_at=datetime.now().timestamp(),
-                    metadata=TileMetadata(can_train=True, worker_capacity=1)
+                    metadata=TileMetadata(can_train=False, worker_capacity=1)
                 )
                 
-                self.state.tiles.append(city_tile)
-                
-        print("Placed city tiles")
+                self.state.tiles.append(field_tile)
+                    
+        print(f"Placed {len(self.state.players)} field tiles adjacent to capitals")
         
-    def _scatter_resource_tiles(self):
-        """Scatter resource tiles randomly across the map."""
+    def _place_resource_tiles(self):
+        """Place 20 resource tiles (mines and orchards) at least 5 spaces from capitals."""
         from .models.tile import Resources, TileMetadata, TileType
         import random
         
-        resource_types = [
-            TileType.MINE,
-            TileType.ORCHARD,
-            TileType.MONASTERY,
-            TileType.MARSH
+        # 10 mines and 10 orchards
+        resource_configs = [
+            (TileType.MINE, 10),
+            (TileType.ORCHARD, 10)
         ]
         
-        tiles_per_type = 3  # 3 tiles per resource type
+        total_placed = 0
         
-        for tile_type in resource_types:
-            for i in range(tiles_per_type):
-                attempts = 0
-                while attempts < 100:
-                    x = random.randint(0, self.state.game_settings.map_size - 1)
-                    y = random.randint(0, self.state.game_settings.map_size - 1)
+        for tile_type, count in resource_configs:
+            placed = 0
+            attempts = 0
+            
+            while placed < count and attempts < 1000:
+                x = random.randint(0, self.state.game_settings.map_size - 1)
+                y = random.randint(0, self.state.game_settings.map_size - 1)
+                
+                # Check if position is valid (not occupied and at least 5 spaces from any capital)
+                if not self._is_position_occupied(x, y) and self._min_distance_from_capitals(x, y) >= 5:
+                    resources, hp, metadata = self._get_resource_tile_properties(tile_type)
                     
-                    if not self._is_position_occupied(x, y) and not self._is_near_capital(x, y):
-                        # Create resource tile with appropriate properties
-                        resources, hp, metadata = self._get_resource_tile_properties(tile_type)
-                        
-                        resource_tile = Tile(
-                            id=f"{x},{y}",
-                            type=tile_type,
-                            x=x,
-                            y=y,
-                            edges=self._get_tile_edges(tile_type),
-                            hp=hp,
-                            max_hp=hp,
-                            owner=None,
-                            resources=resources,
-                            placed_at=datetime.now().timestamp(),
-                            metadata=metadata
-                        )
-                        
-                        self.state.tiles.append(resource_tile)
-                        break
-                        
-                    attempts += 1
+                    resource_tile = Tile(
+                        id=f"{x},{y}",
+                        type=tile_type,
+                        x=x,
+                        y=y,
+                        edges=self._get_tile_edges(tile_type),
+                        hp=hp,
+                        max_hp=hp,
+                        owner=None,
+                        resources=resources,
+                        placed_at=datetime.now().timestamp(),
+                        metadata=metadata,
+                        capturable=True
+                    )
                     
-        print("Scattered resource tiles")
+                    self.state.tiles.append(resource_tile)
+                    placed += 1
+                    total_placed += 1
+                    
+                attempts += 1
+                
+        print(f"Placed {total_placed} resource tiles (mines and orchards)")
+        
+    def _place_marsh_tiles(self):
+        """Place 15 marsh tiles at least 3 spaces from capitals."""
+        from .models.tile import Resources, TileMetadata, TileType
+        import random
+        
+        placed = 0
+        attempts = 0
+        
+        while placed < 15 and attempts < 1000:
+            x = random.randint(0, self.state.game_settings.map_size - 1)
+            y = random.randint(0, self.state.game_settings.map_size - 1)
+            
+            # Check if position is valid (not occupied and at least 3 spaces from any capital)
+            if not self._is_position_occupied(x, y) and self._min_distance_from_capitals(x, y) >= 3:
+                marsh_tile = Tile(
+                    id=f"{x},{y}",
+                    type=TileType.MARSH,
+                    x=x,
+                    y=y,
+                    edges=["marsh", "marsh", "marsh", "marsh"],
+                    hp=25,
+                    max_hp=25,
+                    owner=None,
+                    resources=Resources(gold=0, food=0, faith=0),
+                    placed_at=datetime.now().timestamp(),
+                    metadata=TileMetadata(
+                        can_train=False, 
+                        worker_capacity=0,
+                        speed_multiplier=0.5  # Marshes slow down units
+                    )
+                )
+                
+                self.state.tiles.append(marsh_tile)
+                placed += 1
+                
+            attempts += 1
+                    
+        print(f"Placed {placed} marsh tiles")
         
     def _is_position_occupied(self, x: int, y: int) -> bool:
         """Check if a position is already occupied by a tile."""
@@ -373,10 +465,10 @@ class Room:
         """Check if position is too close to a capital city."""
         min_distance = 3
         capital_positions = [
-            {"x": 10, "y": 10},
-            {"x": 30, "y": 10},
-            {"x": 10, "y": 30},
-            {"x": 30, "y": 30}
+            {"x": 5, "y": 5},
+            {"x": 14, "y": 5},
+            {"x": 5, "y": 14},
+            {"x": 14, "y": 14}
         ]
         
         for capital in capital_positions:
@@ -384,6 +476,22 @@ class Room:
             if distance < min_distance:
                 return True
         return False
+    
+    def _min_distance_from_capitals(self, x: int, y: int) -> int:
+        """Get minimum Manhattan distance from position to any capital."""
+        capital_positions = [
+            {"x": 5, "y": 5},
+            {"x": 14, "y": 5},
+            {"x": 5, "y": 14},
+            {"x": 14, "y": 14}
+        ]
+        
+        min_dist = float('inf')
+        for capital in capital_positions:
+            distance = abs(x - capital['x']) + abs(y - capital['y'])
+            min_dist = min(min_dist, distance)
+        
+        return min_dist
         
     def _get_resource_tile_properties(self, tile_type):
         """Get properties for resource tiles."""
@@ -564,6 +672,9 @@ class Room:
                 # Update game state
                 await self._update_game_state()
                 
+                # Increment tick
+                self.tick += 1
+                
                 # Only broadcast state when necessary (performance optimization)
                 # Broadcast every 3 ticks (0.3 seconds) instead of every tick
                 if self.tick - last_broadcast_tick >= 3:
@@ -572,7 +683,6 @@ class Room:
                 
                 # Wait for next tick (10 FPS = 100ms)
                 await asyncio.sleep(0.1)
-                self.tick += 1
                 
         except asyncio.CancelledError:
             pass
@@ -587,11 +697,21 @@ class Room:
         now = datetime.now().timestamp()
         self.state.last_update = now
         
-        # Update turn timer
+        # Check for tile selection rotation every 150 ticks (15 seconds at 10 FPS)
         if self.state.status == GameStatus.PLAYING:
-            self.state.turn_time_remaining -= 0.1
-            if self.state.turn_time_remaining <= 0:
+            # Special case: send initial tile offers at tick 1 to ensure all players are connected
+            if self.tick == 1:
+                logger.info(f"Tick 1: Sending initial tile offers to player {self.state.current_player}")
+                self._generate_tile_offers_for_player(self.state.current_player)
+            elif self.tick > 0 and self.tick % 150 == 0:
+                logger.info(f"Tick {self.tick}: Advancing to next player's tile selection turn")
                 self._advance_turn()
+            
+            # Update turn time remaining for UI display (counts down from 15 to 0)
+            ticks_in_current_turn = self.tick % 150
+            self.state.turn_time_remaining = max(0, 15.0 - (ticks_in_current_turn * 0.1))
+        elif self.tick % 50 == 0:  # Log every 5 seconds
+            logger.info(f"Game status is {self.state.status}, not advancing turns")
         
         # Update unit training
         self._update_unit_training(now)
@@ -949,32 +1069,56 @@ class Room:
         
         logger.info(f"Game finished in room {self.room_id}. Winner: {winner_id} ({winner.name})")
         
-    def _advance_turn(self):
+    def _advance_turn(self, tile_placed=False):
         """Advance to the next player's turn, skipping eliminated players."""
         if not self.state.players:
             return
         
-        # Get active (non-eliminated) players
-        active_players = [p for p in self.state.players if not p.is_eliminated]
+        logger.info(f"Advancing turn from player {self.state.current_player}")
+        
+        # Get active (non-eliminated) players - ensure no duplicates by ID
+        seen_ids = set()
+        active_players = []
+        for p in self.state.players:
+            if not p.is_eliminated and p.id not in seen_ids:
+                active_players.append(p)
+                seen_ids.add(p.id)
         
         if len(active_players) <= 1:
             # Only one or no players left, game should end
             return
         
-        # Find current player index among active players
+        # Find current player
+        current_player = None
         current_player_index = -1
         for i, player in enumerate(active_players):
             if player.id == self.state.current_player:
+                current_player = player
                 current_player_index = i
                 break
+        
+        # Log current state for debugging
+        logger.info(f"Current player index: {current_player_index}, Active players: {[p.id for p in active_players]}")
+        
+        # If current player not found (shouldn't happen), default to 0
+        if current_player_index == -1:
+            logger.warning(f"Current player {self.state.current_player} not found in active players, defaulting to first player")
+            current_player_index = 0
         
         # Move to next active player
         next_player_index = (current_player_index + 1) % len(active_players)
         self.state.current_player = active_players[next_player_index].id
         
-        # Reset turn timer
-        self.state.turn_time_remaining = 60.0  # 60 seconds per turn
+        logger.info(f"Turn advanced from player index {current_player_index} to {next_player_index} (player {self.state.current_player})")
+        
+        # Increment turn number
         self.state.turn_number += 1
+        
+        # Generate new tile offers for the next player
+        self._generate_tile_offers_for_player(self.state.current_player)
+        
+        # Broadcast turn change
+        self._broadcast_turn_change()
         
     def _generate_tile_offers_for_player(self, player_id: int):
         """Generate 3 tile offers for the specified player."""
@@ -1015,7 +1159,7 @@ class Room:
         print(f"Generated tile offers for player {player_id}: {tile_types_for_validation}")
         
     def _send_tile_offers_to_player(self, player_id: int, tile_offers: list):
-        """Send tile offers to all players (for visibility), but only the active player can place them."""
+        """Send tile offers only to the active player."""
         # Create tile offer message
         message = {
             "type": "state",
@@ -1023,30 +1167,30 @@ class Room:
                 "tileOffer": {
                     "playerId": player_id,
                     "tiles": tile_offers,
-                    "isMyTurn": False  # Will be set to True for the active player
+                    "isMyTurn": True
                 }
             }
         }
         
-        # Send to all players, marking if it's their turn
-        for pid, connection in self.connections.items():
-            # Check if this player is the active player
-            player = self.players.get(pid)
-            if player and player.id == player_id:
-                # This is the active player's turn
-                message["payload"]["tileOffer"]["isMyTurn"] = True
-            else:
-                # This is not the active player's turn
-                message["payload"]["tileOffer"]["isMyTurn"] = False
-            
-            try:
-                import orjson
-                message_str = orjson.dumps(message).decode()
-                asyncio.create_task(connection.send_text(message_str))
-            except Exception as e:
-                print(f"Failed to send tile offers to {pid}: {e}")
+        # Send only to the active player
+        logger.info(f"Sending tile offers to player {player_id}. Connections: {list(self.connections.keys())}")
         
-        print(f"Sent tile offers to all players (active player: {player_id})")
+        for pid, connection in self.connections.items():
+            player = self.players.get(pid)
+            logger.info(f"Checking connection {pid}: player exists={player is not None}, player.id={player.id if player else 'None'}")
+            
+            if player and player.id == player_id:
+                # This is the active player - send tile offers
+                try:
+                    import orjson
+                    message_str = orjson.dumps(message).decode()
+                    asyncio.create_task(connection.send_text(message_str))
+                    logger.info(f"Successfully sent tile offers to player {player_id} (connection {pid})")
+                except Exception as e:
+                    logger.error(f"Failed to send tile offers to {pid}: {e}")
+                break
+        else:
+            logger.warning(f"Could not find connection for player {player_id}")
             
     def _broadcast_turn_change(self):
         """Broadcast turn change to all players."""
@@ -1111,12 +1255,21 @@ class Room:
         if not self.state or not self.state.players:
             return
             
+        # First, complete any follower recalls
+        completed_recalls = self.follower_system.complete_recalls(self.state)
+        for follower in completed_recalls:
+            # Broadcast follower recall complete
+            self._broadcast_follower_recall_complete(follower)
+            
+        # Calculate resource generation using follower system
+        generation_rates = self.follower_system.calculate_resource_generation(self.state)
+        
         # Update resources for each player
         for player in self.state.players:
             if player.is_eliminated:
                 continue
                 
-            generation = self._calculate_player_resource_generation(player.id)
+            generation = generation_rates.get(player.id, {"gold": 0, "food": 0, "faith": 0})
             
             # Apply generation with caps
             for resource_type, amount in generation.items():
@@ -1125,11 +1278,34 @@ class Room:
                 player.resources[resource_type] = new_amount
             
             # Log resource update
-            print(f"Player {player.id} resources updated: {player.resources}")
+            print(f"Player {player.id} resources updated: {player.resources} (gen: {generation})")
         
         # Broadcast resource updates to all clients
         self._broadcast_resource_update()
         
+    def _broadcast_follower_recall_complete(self, follower):
+        """Broadcast follower recall completion to all connected clients."""
+        if not self.state:
+            return
+            
+        message = {
+            "type": "follower_recall_complete",
+            "payload": {
+                "follower_id": follower.id,
+                "player_id": follower.player_id
+            },
+            "timestamp": datetime.now().timestamp()
+        }
+        
+        # Send to all connected players
+        for player_id, connection in self.connections.items():
+            try:
+                import orjson
+                message_str = orjson.dumps(message).decode()
+                asyncio.create_task(connection.send_text(message_str))
+            except Exception as e:
+                print(f"Failed to send follower recall complete to {player_id}: {e}")
+    
     def _broadcast_resource_update(self):
         """Broadcast resource updates to all connected clients."""
         if not self.state or not self.state.players:

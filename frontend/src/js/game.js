@@ -12,6 +12,8 @@ class Game {
         this.websocketClient = null;
         this.uiManager = null;
         this.conquestSystem = null;
+        this.followerSystem = null;
+        this.techTreeUI = null;
         
         // UI feedback components
         this.toastManager = null;
@@ -97,6 +99,14 @@ class Game {
             
             // Initialize unit system
             await this.unitSystem.init();
+            
+            // Initialize follower system
+            this.followerSystem = new FollowerSystem(this);
+            this.followerSystem.init();
+            
+            // Initialize tech tree UI
+            this.techTreeUI = new TechTreeUI(this);
+            this.techTreeUI.init();
             
             // Pass tween system and unit system to renderer for proper rendering
             this.renderer.tweenSystem = this.tweenSystem;
@@ -438,6 +448,11 @@ class Game {
                 this.handleTileOfferUpdate(payload.tileOffer);
             }
             
+            // Handle initial tile
+            if (payload.initialTile) {
+                this.handleInitialTile(payload.initialTile);
+            }
+            
             // Handle tile updates (placed tiles)
             if (payload.tiles) {
                 this.handleTileUpdate(payload.tiles);
@@ -500,6 +515,21 @@ class Game {
                     this.renderer.renderTile(tileData.tile.x, tileData.tile.y, tileData.tile);
                 }
                 
+                // If this was our tile placement, remove it from our bank
+                if (tileData.player_id === this.myPlayerName) {
+                    // Find and remove the placed tile from bank
+                    const placedTileType = tileData.tile.type;
+                    const tileInBank = this.tileSystem.tileBank.find(t => t.type === placedTileType);
+                    if (tileInBank) {
+                        this.tileSystem.removeTileFromBank(tileInBank);
+                    }
+                    
+                    // Exit placement mode if we were in it
+                    if (this.isPlacementMode) {
+                        this.exitPlacementMode();
+                    }
+                }
+                
                 // Update UI with new turn information
                 if (tileData.next_player !== undefined) {
                     this.uiManager.updateCurrentPlayerDisplay(tileData.next_player);
@@ -508,21 +538,6 @@ class Game {
                 // Update resources if available
                 if (tileData.new_resources) {
                     this.uiManager.updateResourceDisplay(tileData.new_resources);
-                }
-                
-                // If this was our tile placement, remove from bank and exit placement mode
-                if (tileData.player_id === this.myPlayerName && this.selectedTileForPlacement) {
-                    // Remove the placed tile from tile bank
-                    this.tileSystem.removeTileFromBank(this.selectedTileForPlacement);
-                    
-                    // Exit placement mode
-                    this.exitPlacementMode();
-                    
-                    // Show success message
-                    this.toastManager.showSuccess('Tile placed successfully');
-                } else {
-                    // Show toast notification for other players
-                    this.toastManager.showInfo(`Tile placed at (${tileData.tile.x}, ${tileData.tile.y})`);
                 }
             }
         });
@@ -686,6 +701,9 @@ class Game {
             this.gameState.updateFromServer(gameState);
         }
         
+        // Update player display to reflect any changes (including stored placements)
+        this.updatePlayerDisplay();
+        
         // In multiplayer mode, render tiles from server state
         if (this.config.mode === 'multiplayer' && this.renderer) {
             if (gameState.tiles && gameState.tiles.length > 0) {
@@ -705,6 +723,16 @@ class Game {
         
         // Update UI components
         this.uiManager.updateFromGameState(gameState);
+        
+        // Update follower system
+        if (this.followerSystem) {
+            this.followerSystem.updateGameState(gameState);
+        }
+        
+        // Update tech tree UI
+        if (this.techTreeUI) {
+            this.techTreeUI.updateFromGameState(gameState);
+        }
         
         // Update renderer
         if (this.renderer) {
@@ -736,6 +764,8 @@ class Game {
             playerNameElement.textContent = `Player ${this.myPlayerId + 1}`;
         }
         
+        // Stored placements have been replaced by the tile bank system
+        
         console.log(`Updated player display to show Player ${this.myPlayerId + 1}`);
     }
     
@@ -756,6 +786,18 @@ class Game {
             // Pass the isMyTurn flag to tile system
             this.tileSystem.updateTileOffers(tileOfferData.tiles, tileOfferData.isMyTurn);
         }
+    }
+    
+    handleInitialTile(initialTile) {
+        console.log('Received initial tile for bank:', initialTile);
+        
+        // Enable tile system if it's not already started
+        if (!this.tileSystem.initialized) {
+            this.tileSystem.start();
+        }
+        
+        // Add the initial tile to the player's bank
+        this.tileSystem.addToTileBank(initialTile);
     }
     
     handleTileUpdate(tilesData) {
@@ -1100,7 +1142,12 @@ class Game {
     handleTileClick(event) {
         const { x, y } = event.detail;
         
-        // Check for worker placement first
+        // Check for follower placement first
+        if (this.followerSystem && this.followerSystem.handleTileClick(x, y)) {
+            return; // Follower placement handled
+        }
+        
+        // Check for worker placement (legacy)
         if (this.uiManager && this.uiManager.handleTileClickForWorkerPlacement(x, y)) {
             return; // Worker was placed, don't continue with tile placement
         }

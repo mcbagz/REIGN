@@ -21,14 +21,6 @@ class TileType(str, Enum):
     WATCHTOWER = "watchtower"
 
 
-class WorkerType(str, Enum):
-    """Available worker types in the game."""
-    MAGISTRATE = "magistrate"
-    FARMER = "farmer"
-    MONK = "monk"
-    SCOUT = "scout"
-
-
 class Resources(BaseModel):
     """Resource generation of a tile."""
     gold: int = Field(ge=0, description="Gold generation per second")
@@ -36,11 +28,6 @@ class Resources(BaseModel):
     faith: int = Field(ge=0, description="Faith generation per second")
 
 
-class Worker(BaseModel):
-    """Worker placed on a tile."""
-    id: int = Field(description="Worker ID")
-    type: WorkerType = Field(description="Worker type")
-    owner: int = Field(ge=0, description="Player ID who owns this worker")
 
 
 class TileMetadata(BaseModel):
@@ -56,13 +43,13 @@ class Tile(BaseModel):
     """A tile in the Carcassonne: War of Ages game."""
     id: str = Field(description="Unique identifier for the tile (e.g., '10,15')")
     type: TileType = Field(description="Type of tile")
-    x: int = Field(ge=0, le=39, description="X coordinate on the 40x40 grid")
-    y: int = Field(ge=0, le=39, description="Y coordinate on the 40x40 grid")
+    x: int = Field(ge=0, le=19, description="X coordinate on the 20x20 grid")
+    y: int = Field(ge=0, le=19, description="Y coordinate on the 20x20 grid")
     edges: List[str] = Field(min_length=4, max_length=4, description="Edges of the tile [North, East, South, West]")
     hp: int = Field(ge=0, description="Current hit points")
     max_hp: int = Field(ge=1, description="Maximum hit points")
     owner: Optional[int] = Field(ge=0, default=None, description="Player ID who owns this tile, null if unowned")
-    worker: Optional[Worker] = Field(default=None, description="Worker placed on this tile, null if no worker")
+    follower_id: Optional[str] = Field(default=None, description="ID of follower placed on this tile, null if no follower")
     resources: Resources = Field(description="Resource generation of this tile")
     placed_at: float = Field(description="Timestamp when tile was placed")
     metadata: Optional[TileMetadata] = Field(default=None, description="Additional tile metadata")
@@ -82,11 +69,7 @@ class Tile(BaseModel):
                 "hp": 100,
                 "max_hp": 100,
                 "owner": 1,
-                "worker": {
-                    "id": 1,
-                    "type": "magistrate",
-                    "owner": 1
-                },
+                "follower_id": "follower_1",
                 "resources": {
                     "gold": 2,
                     "food": 0,

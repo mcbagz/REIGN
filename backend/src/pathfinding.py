@@ -29,7 +29,7 @@ class Node:
 class Pathfinder:
     """A* pathfinding system for the game grid."""
     
-    def __init__(self, grid_width: int = 40, grid_height: int = 40):
+    def __init__(self, grid_width: int = 20, grid_height: int = 20):
         self.grid_width = grid_width
         self.grid_height = grid_height
         self.terrain_weights = {}  # Position -> weight mapping

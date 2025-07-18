@@ -35,6 +35,9 @@ class MessageType(str, Enum):
     GAME_VICTORY = "game_victory"
     AURA_ENTER = "aura_enter"
     AURA_EXIT = "aura_exit"
+    FOLLOWER_PLACED = "follower_placed"
+    FOLLOWER_RECALLED = "follower_recalled"
+    FOLLOWER_RECALL_COMPLETE = "follower_recall_complete"
 
 
 class Priority(str, Enum):
@@ -63,7 +66,8 @@ class MessageMetadata(BaseModel):
 class CommandAction(str, Enum):
     """Available command actions."""
     PLACE_TILE = "place_tile"
-    PLACE_WORKER = "place_worker"
+    PLACE_FOLLOWER = "place_follower"
+    RECALL_FOLLOWER = "recall_follower"
     CREATE_UNIT = "create_unit"
     MOVE_UNIT = "move_unit"
     ATTACK_UNIT = "attack_unit"

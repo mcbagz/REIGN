@@ -106,6 +106,27 @@
     letter-spacing: 1px;
 }
 
+.stored-placements {
+    margin-top: 5px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.stored-label {
+    color: #95a5a6;
+}
+
+#stored-placements-count {
+    color: #3498db;
+    font-weight: bold;
+    background: rgba(52, 152, 219, 0.2);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(52, 152, 219, 0.4);
+}
+
 /* Game controls */
 #game-controls {
     display: flex;
@@ -548,4 +569,416 @@
     border-left: 6px solid transparent;
     border-right: 6px solid transparent;
     border-bottom: 6px solid rgba(44, 62, 80, 0.95);
+}
+
+/* Follower System */
+.follower-panel {
+    position: fixed;
+    right: 20px;
+    top: 100px;
+    width: 250px;
+    background: rgba(44, 62, 80, 0.95);
+    border: 2px solid #34495e;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 200;
+}
+
+.follower-panel h3 {
+    margin: 0 0 1rem 0;
+    color: #ecf0f1;
+    font-size: 1.1rem;
+    text-align: center;
+}
+
+.follower-count {
+    text-align: center;
+    color: #ecf0f1;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.follower-types {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.follower-type-btn {
+    background: rgba(52, 73, 94, 0.8);
+    border: 1px solid #34495e;
+    border-radius: 6px;
+    padding: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.follower-type-btn:hover {
+    background: rgba(52, 73, 94, 1);
+    border-color: #3498db;
+    transform: translateY(-2px);
+}
+
+.follower-type-btn.active {
+    background: #3498db;
+    border-color: #2980b9;
+}
+
+.follower-icon {
+    font-size: 1.5rem;
+}
+
+.follower-name {
+    font-size: 0.8rem;
+    color: #ecf0f1;
+}
+
+.placed-followers {
+    margin-top: 1rem;
+    border-top: 1px solid #34495e;
+    padding-top: 1rem;
+}
+
+.placed-followers h4 {
+    margin: 0 0 0.5rem 0;
+    color: #ecf0f1;
+    font-size: 0.9rem;
+}
+
+#placed-followers-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.placed-follower-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    background: rgba(52, 73, 94, 0.5);
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: #ecf0f1;
+}
+
+.placed-follower-item.recalling {
+    opacity: 0.6;
+    animation: pulse 1s infinite;
+}
+
+.follower-info {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.recall-btn {
+    background: #e74c3c;
+    border: none;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    color: white;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recall-btn:hover {
+    background: #c0392b;
+}
+
+.recall-status {
+    color: #f39c12;
+    font-size: 0.7rem;
+}
+
+.no-followers {
+    text-align: center;
+    color: #95a5a6;
+    font-size: 0.8rem;
+    margin: 1rem 0;
+}
+
+/* Tech Tree UI */
+.tech-tree-btn {
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    background: rgba(44, 62, 80, 0.95);
+    border: 2px solid #34495e;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    color: #ecf0f1;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1rem;
+    z-index: 200;
+}
+
+.tech-tree-btn:hover {
+    background: rgba(52, 73, 94, 1);
+    border-color: #3498db;
+    transform: translateY(-2px);
+}
+
+.tech-icon {
+    font-size: 1.5rem;
+}
+
+.tech-tree-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.tech-tree-modal.hidden {
+    display: none;
+}
+
+.tech-tree-content {
+    background: rgba(44, 62, 80, 0.98);
+    border: 2px solid #34495e;
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
+    width: 1000px;
+}
+
+.tech-tree-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.tech-tree-header h2 {
+    color: #f39c12;
+    margin: 0;
+    font-size: 1.8rem;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #ecf0f1;
+    font-size: 2rem;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: #e74c3c;
+}
+
+.tech-levels {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 3rem;
+    padding: 1rem;
+    background: rgba(52, 73, 94, 0.3);
+    border-radius: 8px;
+}
+
+.tech-level-item {
+    flex: 1;
+    padding: 1.5rem;
+    background: rgba(52, 73, 94, 0.6);
+    border: 2px solid #34495e;
+    border-radius: 8px;
+    text-align: center;
+    transition: all 0.3s;
+    opacity: 0.6;
+}
+
+.tech-level-item.active {
+    opacity: 1;
+    border-color: #3498db;
+}
+
+.tech-level-item.current {
+    background: rgba(52, 152, 219, 0.3);
+    border-color: #3498db;
+}
+
+.tech-level-item h3 {
+    color: #f39c12;
+    margin: 0 0 0.5rem 0;
+}
+
+.tech-level-item p {
+    color: #95a5a6;
+    font-size: 0.9rem;
+    margin: 0.5rem 0;
+}
+
+.unlocks {
+    margin: 1rem 0;
+    text-align: left;
+}
+
+.unlock-section {
+    margin: 0.5rem 0;
+}
+
+.unlock-section h4 {
+    color: #3498db;
+    font-size: 0.9rem;
+    margin: 0.25rem 0;
+}
+
+.unlock-section span {
+    color: #ecf0f1;
+    font-size: 0.8rem;
+}
+
+.advance-btn {
+    background: #27ae60;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 1rem;
+}
+
+.advance-btn:hover:not(:disabled) {
+    background: #229954;
+    transform: translateY(-2px);
+}
+
+.advance-btn:disabled {
+    background: #7f8c8d;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.tech-progress-arrow {
+    font-size: 2rem;
+    color: #f39c12;
+    margin: 0 1rem;
+}
+
+.tech-upgrades,
+.special-abilities {
+    margin-bottom: 2rem;
+}
+
+.tech-upgrades h3,
+.special-abilities h3 {
+    color: #f39c12;
+    margin-bottom: 1rem;
+}
+
+.upgrade-list,
+.ability-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.upgrade-section {
+    background: rgba(52, 73, 94, 0.3);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.upgrade-section h4 {
+    color: #3498db;
+    margin: 0 0 1rem 0;
+}
+
+.upgrade-item,
+.ability-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(52, 73, 94, 0.5);
+    border: 1px solid #34495e;
+    border-radius: 6px;
+    padding: 1rem;
+    transition: all 0.2s;
+}
+
+.upgrade-item.unlocked {
+    border-color: #3498db;
+}
+
+.upgrade-item.purchased {
+    background: rgba(46, 204, 113, 0.1);
+    border-color: #27ae60;
+}
+
+.upgrade-info h5,
+.ability-info h5 {
+    color: #ecf0f1;
+    margin: 0 0 0.5rem 0;
+}
+
+.upgrade-info p,
+.ability-info p {
+    color: #bdc3c7;
+    font-size: 0.9rem;
+    margin: 0.5rem 0;
+}
+
+.upgrade-cost,
+.ability-cost {
+    color: #f39c12;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+}
+
+.purchase-btn,
+.use-ability-btn {
+    background: #3498db;
+    border: none;
+    border-radius: 4px;
+    padding: 0.5rem 1rem;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.purchase-btn:hover,
+.use-ability-btn:hover {
+    background: #2980b9;
+    transform: translateY(-1px);
+}
+
+.purchased-label {
+    color: #27ae60;
+    font-weight: bold;
+}
+
+.locked-label {
+    color: #7f8c8d;
+    font-style: italic;
+}
+
+.no-abilities {
+    text-align: center;
+    color: #95a5a6;
+    font-style: italic;
+    padding: 2rem;
 } 

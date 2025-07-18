@@ -7,6 +7,8 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from .tile import Tile, TileType
 from .unit import Unit, Position
+from .follower import Follower
+from .tech_tree import TechTree, TechLevel
 
 
 class GameStatus(str, Enum):
@@ -18,11 +20,6 @@ class GameStatus(str, Enum):
     FINISHED = "finished"
 
 
-class TechLevel(str, Enum):
-    """Available technology levels."""
-    MANOR = "manor"
-    DUCHY = "duchy"
-    KINGDOM = "kingdom"
 
 
 class PlayerStats(BaseModel):
@@ -41,10 +38,13 @@ class Player(BaseModel):
     is_connected: bool = Field(description="Whether player is currently connected")
     is_eliminated: bool = Field(description="Whether player has been eliminated")
     resources: Dict[str, int] = Field(description="Current resources")
-    tech_level: TechLevel = Field(description="Current technology level")
+    tech_level: TechLevel = Field(default=TechLevel.MANOR, description="Current technology level")
+    tech_tree: Optional[TechTree] = Field(default=None, description="Player's tech tree")
     capital_city: Optional[Position] = Field(default=None, description="Position of capital city, null if eliminated")
     stats: Optional[PlayerStats] = Field(default=None, description="Player statistics")
     capital_hp: int = Field(ge=0, default=100, description="Current hit points of player's capital city")
+    stored_placements: int = Field(ge=0, le=3, default=0, description="Number of stored tile placements (max 3)")
+    followers_available: int = Field(ge=0, le=8, default=8, description="Number of followers in player's pool")
 
     class Config:
         """Pydantic configuration."""
@@ -71,7 +71,7 @@ class GameSettings(BaseModel):
     max_players: int = Field(ge=2, le=4, default=4, description="Maximum number of players in the game")
     turn_duration: float = Field(ge=1, default=15.0, description="Turn duration in seconds")
     max_game_duration: float = Field(ge=1, default=1800.0, description="Maximum game duration in seconds")
-    map_size: int = Field(ge=10, le=100, default=40, description="Size of the square map")
+    map_size: int = Field(ge=10, le=100, default=20, description="Size of the square map")
     resource_update_interval: float = Field(ge=0.1, default=1.0, description="How often resources are updated in seconds")
 
 
@@ -87,6 +87,7 @@ class GameState(BaseModel):
     players: List[Player] = Field(min_length=2, max_length=4, description="Array of players in the game")
     tiles: List[Tile] = Field(description="Array of all tiles placed on the board")
     units: List[Unit] = Field(description="Array of all units on the board")
+    followers: List[Follower] = Field(default_factory=list, description="Array of all followers in the game")
     available_tiles: List[AvailableTile] = Field(description="Remaining tiles in the deck")
     current_tile_options: Optional[List[TileType]] = Field(default=None, min_length=3, max_length=3, description="Three tile options for current player")
     winner: Optional[int] = Field(ge=0, default=None, description="ID of winning player, null if game not finished")
@@ -144,7 +145,7 @@ class GameState(BaseModel):
                 "game_settings": {
                     "turn_duration": 15.0,
                     "max_game_duration": 1800.0,
-                    "map_size": 40,
+                    "map_size": 20,
                     "resource_update_interval": 1.0
                 },
                 "events": []

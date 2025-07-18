@@ -24,18 +24,8 @@ class TileSystem {
         console.log('TileSystem started');
         this.initialized = true;
         this.initializeModal();
-        this.startPlacementCycle();
-        
-        // Debug: Generate some initial tiles for testing
-        this.currentTileOptions = this.generateTileOptions();
-        
-        // Add tiles directly to bank for immediate testing
-        this.currentTileOptions.forEach(tile => {
-            this.addToTileBank(tile);
-        });
-        
-        // Also show the modal immediately for testing
-        this.showTileOptions();
+        // Don't start placement cycle here - let server control it
+        // Don't generate tiles locally - wait for server
     }
     
     pause() {
@@ -97,8 +87,11 @@ class TileSystem {
             return;
         }
         
-        // Generate 3 random tile options
-        this.currentTileOptions = this.generateTileOptions();
+        // Only generate random tiles if we don't have tiles from the server
+        if (!this.currentTileOptions || this.currentTileOptions.length === 0) {
+            // Generate 3 random tile options (for testing/dev mode only)
+            this.currentTileOptions = this.generateTileOptions();
+        }
         
         // Update modal UI
         this.updateModalUI();
@@ -270,8 +263,11 @@ class TileSystem {
         
         const selectedTile = this.currentTileOptions[index];
         
-        // Add to tile bank
-        this.addToTileBank(selectedTile);
+        // Only add to tile bank if it's the player's turn
+        if (this.isMyTurn) {
+            // Add to tile bank
+            this.addToTileBank(selectedTile);
+        }
         
         // Close modal
         this.closeModal();
@@ -466,17 +462,10 @@ class TileSystem {
         // Store turn information
         this.isMyTurn = isMyTurn;
         
-        // Show the tile selection modal (all players can see it)
-        this.showTileOptions();
-        
-        // Only add tiles to bank if it's the player's turn
+        // Only show tile selection modal if it's this player's turn
         if (isMyTurn) {
-            tileOffers.forEach(tile => {
-                this.addToTileBank(tile);
-            });
-        } else {
-            // For non-active players, just show the offers as preview
-            console.log('Not your turn - showing tile offers as preview only');
+            // Show the tile selection modal
+            this.showTileOptions();
         }
     }
 
@@ -505,6 +494,46 @@ class TileSystem {
     
     recallWorker(workerId) {
         return this.gameState.recallWorker(workerId);
+    }
+    
+    // Follower visualization methods
+    addFollowerToTile(tile, followerType, playerId) {
+        // This will be handled by the renderer
+        // Emit event for renderer to update tile display
+        const event = new CustomEvent('followerPlacedOnTile', {
+            detail: { tile, followerType, playerId }
+        });
+        document.dispatchEvent(event);
+    }
+    
+    removeFollowerFromTile(tile) {
+        // Emit event for renderer to update tile display
+        const event = new CustomEvent('followerRemovedFromTile', {
+            detail: { tile }
+        });
+        document.dispatchEvent(event);
+    }
+    
+    showRecallAnimation(tile) {
+        // Emit event for renderer to show recall animation
+        const event = new CustomEvent('followerRecallAnimation', {
+            detail: { tile }
+        });
+        document.dispatchEvent(event);
+    }
+    
+    highlightTile(x, y, color, alpha) {
+        // Emit event for renderer to highlight tile
+        const event = new CustomEvent('highlightTile', {
+            detail: { x, y, color, alpha }
+        });
+        document.dispatchEvent(event);
+    }
+    
+    clearHighlights() {
+        // Emit event for renderer to clear highlights
+        const event = new CustomEvent('clearTileHighlights');
+        document.dispatchEvent(event);
     }
     
     update(deltaTime) {

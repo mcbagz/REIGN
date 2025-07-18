@@ -3,7 +3,7 @@ Combat system with spatial hashing for Carcassonne: War of Ages.
 """
 
 from typing import Dict, List, Set, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from src.models.unit import Unit, UnitStatus, Position
 import time
 import math
@@ -12,13 +12,14 @@ import math
 @dataclass
 class CombatEvent:
     """Event representing a combat action."""
-    type: str  # "attack", "death", "damage"
+    type: str  # "attack", "death", "damage", "raid"
     attacker_id: str
     target_id: str
     damage: int
     timestamp: float
     position: Position
     target_died: bool = False
+    resources_stolen: Optional[Dict[str, int]] = None  # For raid events
 
 
 class SpatialHash:
@@ -152,6 +153,32 @@ class CombatSystem:
                 enemy_tiles.append(tile)
         
         return enemy_tiles
+    
+    def raid_tile(self, unit: Unit, tile, owner_resources: Dict[str, int]) -> Optional[CombatEvent]:
+        """Process a raid action on an enemy tile."""
+        if not tile or tile.owner == unit.owner:
+            return None
+            
+        # Calculate resources to steal (10% of owner's current resources)
+        resources_stolen = {
+            "gold": int(owner_resources.get("gold", 0) * 0.1),
+            "food": int(owner_resources.get("food", 0) * 0.1),
+            "faith": int(owner_resources.get("faith", 0) * 0.1)
+        }
+        
+        # Create raid event
+        raid_event = CombatEvent(
+            type="raid",
+            attacker_id=unit.id,
+            target_id=tile.id,
+            damage=0,  # No damage in raids
+            timestamp=time.time(),
+            position=unit.position,
+            target_died=False,
+            resources_stolen=resources_stolen
+        )
+        
+        return raid_event
     
     def process_combat_tick(self, all_units: Dict[str, Unit], current_time: float, all_tiles: List = None, conquest_system=None) -> List[CombatEvent]:
         """Process one combat tick for all units."""

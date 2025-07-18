@@ -2,13 +2,6 @@ Discrepancies between Game Design and Implementation (Corrected)
 
 ### Gameplay Mechanics
 
-*   **Tile Placement:**
-    *   **15-Second Timer:** The game design specifies a 15-second timer for tile placement. The `CycleTimer` in `frontend/src/js/cycle-timer.js` exists, but it is not connected to the actual tile placement logic in `frontend/src/js/game.js` to enforce a time limit.
-    *   **Stored Placements:** The ability to "bank" up to three tile placements is not implemented.
-        *   **File:** `frontend/src/js/game.js`
-    *   **Tile Selection:** The game design states that players should be able to choose one of three random tiles. The current implementation in `frontend/src/js/ui-manager.js` and `backend/src/game_room.py` only offers a single, predetermined tile, not a choice of three.
-    *   **Relaxed Connection Rules:** The game design specifies that tiles must connect to an existing tile in the player's territory. The current implementation in `frontend/src/js/tile-system.js` allows placing tiles anywhere on the grid, without checking for adjacency.
-
 *   **Followers:**
     *   The entire follower system (Magistrates, Farmers, Monks, Scouts) is absent from the game. This is a core feature that is completely missing from both the frontend and backend.
 
@@ -19,18 +12,6 @@ Discrepancies between Game Design and Implementation (Corrected)
 *   **Real-Time Combat:**
     *   **Rock-Paper-Scissors:** The game design's rock-paper-scissors combat system (Infantry > Archers > Knights > Infantry) is not implemented in `backend/src/combat_system.py`. Combat is currently a simple damage-per-second calculation.
     *   **Raiding:** The ability to raid enemy tiles for resources is not implemented in `backend/src/combat_system.py`.
-
-*   **Victory Condition:**
-    *   The victory condition is partially implemented. While destroying the enemy capital leads to victory, the alternative condition of eliminating a player by destroying all their followers and tiles is not implemented, as followers are missing. This is a gap in `backend/src/game_room.py`.
-
-### Tile Types
-
-*   **Core Tiles:**
-    *   **Marsh:** The `Marsh` tile is implemented, but it does not slow down units as described in the game design. The pathfinding logic in `backend/src/pathfinding.py` does not account for this.
-*   **Resource Tiles:**
-    *   `Mine` and `Orchard` tiles, which are supposed to be scattered across the map, are not implemented.
-*   **Special Tiles:**
-    *   `Barracks` and `Watchtower` tiles are not implemented.
 
 ### Unit Stats
 

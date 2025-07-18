@@ -433,6 +433,145 @@ class GameRenderer {
         return symbols[tileType] || '?';
     }
     
+    setupFollowerEventListeners() {
+        // Listen for follower placement events
+        document.addEventListener('followerPlacedOnTile', (event) => {
+            const { tile, followerType, playerId } = event.detail;
+            this.renderFollowerOnTile(tile.x, tile.y, followerType, playerId);
+        });
+        
+        // Listen for follower removal events
+        document.addEventListener('followerRemovedFromTile', (event) => {
+            const { tile } = event.detail;
+            this.removeFollowerFromTile(tile.x, tile.y);
+        });
+        
+        // Listen for follower recall animation
+        document.addEventListener('followerRecallAnimation', (event) => {
+            const { tile } = event.detail;
+            this.showFollowerRecallAnimation(tile.x, tile.y);
+        });
+        
+        // Listen for tile highlight events
+        document.addEventListener('highlightTile', (event) => {
+            const { x, y, color, alpha } = event.detail;
+            this.highlightTile(x, y, color, alpha);
+        });
+        
+        // Listen for clear highlights event
+        document.addEventListener('clearTileHighlights', () => {
+            this.clearAllHighlights();
+        });
+    }
+    
+    renderFollowerOnTile(x, y, followerType, playerId) {
+        const tileContainer = this.tileContainers.get(`${x},${y}`);
+        if (!tileContainer) return;
+        
+        // Remove existing follower sprite
+        const existingFollower = tileContainer.getChildByName('follower');
+        if (existingFollower) {
+            tileContainer.removeChild(existingFollower);
+        }
+        
+        // Create follower container
+        const followerContainer = new PIXI.Container();
+        followerContainer.name = 'follower';
+        
+        // Get player color
+        const player = this.gameState?.players?.find(p => p.id === playerId);
+        const playerColor = player ? parseInt(player.color.replace('#', '0x')) : 0xffffff;
+        
+        // Create follower circle background
+        const followerBg = new PIXI.Graphics();
+        followerBg.beginFill(playerColor);
+        followerBg.drawCircle(0, 0, 12);
+        followerBg.endFill();
+        
+        // Add follower icon
+        const followerIcons = {
+            magistrate: '👔',
+            farmer: '🌾',
+            monk: '🙏',
+            scout: '🔍'
+        };
+        
+        const followerText = new PIXI.Text(followerIcons[followerType] || '?', {
+            fontFamily: 'Arial',
+            fontSize: 14,
+            fill: 0xffffff
+        });
+        followerText.anchor.set(0.5);
+        
+        followerContainer.addChild(followerBg);
+        followerContainer.addChild(followerText);
+        
+        // Position in top-right corner of tile
+        followerContainer.x = GameConfig.TILE_SIZE - 15;
+        followerContainer.y = 15;
+        
+        tileContainer.addChild(followerContainer);
+    }
+    
+    removeFollowerFromTile(x, y) {
+        const tileContainer = this.tileContainers.get(`${x},${y}`);
+        if (!tileContainer) return;
+        
+        const follower = tileContainer.getChildByName('follower');
+        if (follower) {
+            tileContainer.removeChild(follower);
+        }
+    }
+    
+    showFollowerRecallAnimation(x, y) {
+        const tileContainer = this.tileContainers.get(`${x},${y}`);
+        if (!tileContainer) return;
+        
+        const follower = tileContainer.getChildByName('follower');
+        if (!follower) return;
+        
+        // Create pulsing animation
+        const pulseAnimation = () => {
+            if (!follower.parent) return; // Stop if removed
+            
+            follower.alpha = 0.5 + 0.5 * Math.sin(Date.now() * 0.005);
+            requestAnimationFrame(pulseAnimation);
+        };
+        
+        pulseAnimation();
+    }
+    
+    highlightTile(x, y, color, alpha) {
+        const tileContainer = this.tileContainers.get(`${x},${y}`);
+        if (!tileContainer) return;
+        
+        // Remove existing highlight
+        const existingHighlight = tileContainer.getChildByName('highlight');
+        if (existingHighlight) {
+            tileContainer.removeChild(existingHighlight);
+        }
+        
+        // Create highlight
+        const highlight = new PIXI.Graphics();
+        highlight.name = 'highlight';
+        highlight.beginFill(color, alpha);
+        highlight.drawRect(0, 0, GameConfig.TILE_SIZE, GameConfig.TILE_SIZE);
+        highlight.endFill();
+        
+        // Add below tile but above background
+        const tileIndex = tileContainer.getChildIndex(tileContainer.getChildByName('tile') || tileContainer.children[0]);
+        tileContainer.addChildAt(highlight, Math.max(0, tileIndex));
+    }
+    
+    clearAllHighlights() {
+        for (const [key, tileContainer] of this.tileContainers) {
+            const highlight = tileContainer.getChildByName('highlight');
+            if (highlight) {
+                tileContainer.removeChild(highlight);
+            }
+        }
+    }
+    
     highlightValidPlacements(validPositions) {
         // Remove existing highlights
         this.clearHighlights();

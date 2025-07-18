@@ -24,7 +24,7 @@ Game Design Document: Carcassonne: War of Ages
     - Tile Selection: Each placement offers three random tile options from a shared pool. The player chooses one to place and discards the other two (returned to the pool).
     - Tile Types: The tiles in the shared pool are 80% Core Tiles, 10% Resource Tiles, and 10% Special Tiles, evenly split among the tiles in each type group.
     - Relaxed Connection Rules: Tiles must connect to at least one existing tile but don’t require feature alignment (e.g., a farm can connect to a city). A player must place a tile to expand the territory containing their capital city. If one territory is connected to another, either player with capital cities within are allowed to place tiles anywhere that expands that larger territory.
-    - Starting Setup: Each player begins with a capital city tile, placed in a separate quadrant of the map (e.g., a 40x40 grid with capitals at least 8 tiles apart). Scattered resource tiles (mines, orchards) are randomly placed across the map, encouraging players to expand toward them. 10 marsh tiles are also scattered, constraining growth.
+    - Starting Setup: Each player begins with a capital city tile, placed in a separate quadrant of the map (e.g., a 20x20 grid with capitals at least 8 tiles apart). Scattered resource tiles (mines, orchards) are randomly placed across the map, encouraging players to expand toward them. 10 marsh tiles are also scattered, constraining growth.
 - Gameplay Feel: Tile placement feels strategic yet forgiving. The 15-second timer keeps the game moving, but stored placements ensure players aren’t punished for brief inattention. Choosing from three tiles adds agency, letting players prioritize economy (e.g., fields for food) or defense (e.g., towers). The relaxed connection rules make it easy to expand toward resource tiles or rivals, maintaining Carcassonne’s map-building joy without rigid constraints.
 
 2.2 Followers
@@ -189,8 +189,8 @@ The tech tree progresses through three stages (Manor, Duchy, Kingdom), unlocking
 6. Other Game Mechanics
 6.1 Map and Starting Setup
 
-- Map Size: 40x40 tile grid, with 15–25 scattered resource tiles (mines, orchards) randomly placed at least 5 tiles from any capital, and 10 marsh tiles randomly placed at least 3 tiles away from any capital.
-- Starting Areas: The four starting areas are the corners of the 10x10 square that shares a center with the board. Each player’s capital city is placed on one of these areas, so they are at least 8 tiles apart, ensuring initial separation. Players expand toward resource tiles or rivals.
+- Map Size: 20x20 tile grid, with 15–25 scattered resource tiles (mines, orchards) randomly placed at least 5 tiles from any capital, and 10 marsh tiles randomly placed at least 3 tiles away from any capital.
+- Starting Areas: The four starting areas are the corners of the 12x12 square that shares a center with the board. Each player’s capital city is placed on one of these areas, so they are at least 10 tiles apart, ensuring initial separation. To be very specific, if one corner of the board is (1,1), I want to the for capital cities to be at (5,5), (5,15), (15,5), and (15,15). Players expand toward resource tiles or rivals.
 
 6.2 Multiplayer and AI
 
