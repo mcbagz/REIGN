@@ -1,0 +1,52 @@
+
+Backend Bugs and Gaps:
+
+Follower System:
+- FollowerSystem.calculate_resource_generation: The logic for calculating resource generation is flawed. It iterates through connected tile groups and adds resources based on group size, but it also iterates through all tiles again, which will double-count resources from special tiles like Mines and Orchards.
+- FollowerSystem.place_follower: The player_id in the Follower model is a string, but it's being compared to an integer in FollowerSystem.complete_recalls. This will cause recalls to fail.
+- FollowerSystem.can_place_follower: The scout can be placed on any tile, but the logic doesn't account for tiles that are already owned by another player.
+
+Combat System:
+- CombatSystem.process_combat_tick: The rock-paper-scissors combat logic is missing. It's a simple DPS calculation.
+- CombatSystem.process_combat_tick: Raiding is not implemented in the combat tick. It's a separate function but is never called.
+- Unit Stats: The unit stats in backend/src/models/unit.py do not match the GDD. For example, the Knight has a speed of 0.8 and the Archer has a speed of 1.2, which is the opposite of what the GDD specifies.
+
+Resource Management:
+- game_room.py: The game starts players with a fixed amount of resources, but there is no continuous, real-time resource generation implemented in the main game loop.
+- game_state.py: Resource caps are not implemented in the Player model.
+
+Tech Tree:
+- The entire tech tree and stage progression system is absent from the game logic. While models exist, they are not integrated into the game loop or player actions.
+
+UI-Related Backend Issues:
+- game_room.py: The _generate_tile_options function only ever presents one tile option, not a choice of three as specified in the GDD.
+
+Other Backend Issues:
+- main.py: There are multiple functions like _get_tile_cost, _can_afford_tile, and _get_unit_cost that are defined but never used. This suggests that the resource cost for placing tiles and training units is not being enforced.
+- main.py: The handle_place_tile function has a comment that says "No resource cost for placing tiles", which contradicts the GDD.
+- game_room.py: The dev_mode flag is used to give players a large number of starting resources, but it also places 300 tiles on the map, which might not be the intended behavior for testing.
+- game_room.py: The _calculate_player_resource_generation function is defined but never used. The game uses FollowerSystem.calculate_resource_generation instead, which has its own set of bugs.
+
+Frontend Bugs and Gaps:
+
+Follower System:
+- follower-system.js: The UI for placing and managing followers is not fully implemented. While there are buttons for follower types, the logic for placing them on the map is incomplete.
+- follower-system.js: The highlightValidTiles function doesn't check if a tile is already occupied by another follower.
+
+Combat System:
+- There is no frontend logic to display the rock-paper-scissors combat advantages or disadvantages.
+
+Tech Tree:
+- tech-tree-ui.js: The UI for the tech tree is not implemented. While a modal is created, it's not populated with the tech tree data and the buttons don't do anything.
+
+UI-Related Frontend Issues:
+- ui-manager.js: The showModal and hideModal functions are defined, but they are never called, so the tech tree and other modals will never be displayed.
+- game.js: The handleTileClick function has logic for placing tiles, but it doesn't check if the player has enough resources to do so.
+- renderer.js: The renderFollowerOnTile function is defined, but it's never called, so followers will not be displayed on the map.
+
+Other Frontend Issues:
+- The frontend code is missing a clear entry point for starting the game. The GameApp class in main.js initializes the game, but it's not clear how the game loop is started or how the initial game state is loaded.
+- There are multiple instances of console.log statements that should be removed in a production build.
+- The frontend uses a mix of vanilla JavaScript and TypeScript, which can lead to inconsistencies.
+- The frontend code is not well-organized. For example, the GameState class in game-state.js seems to be a duplicate of the game state management in the backend, which can lead to synchronization issues.
+- The frontend is missing a clear way to display error messages to the user. While the UIManager has a showError function, it's not consistently used.
