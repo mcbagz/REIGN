@@ -620,6 +620,64 @@ class Game {
         this.cycleTimer.onTick((currentTime, maxTime) => {
             this.handleCycleTimerTick(currentTime, maxTime);
         });
+
+        // Handle player elimination events
+        this.websocketClient.on('player_eliminated', (data) => {
+            console.log('Player eliminated:', data);
+            
+            if (this.uiManager) {
+                this.uiManager.showEliminationMessage(data.player_id, data.player_name || `Player ${data.player_id}`);
+            }
+            
+            // Show toast notification
+            this.toastManager.showWarning(`${data.player_name || `Player ${data.player_id}`} has been eliminated!`);
+        });
+        
+        // Handle victory events
+        this.websocketClient.on('victory', (data) => {
+            console.log('Victory event:', data);
+            
+            if (this.uiManager) {
+                this.uiManager.showVictoryMessage(data.winner_id, data.winner_name || `Player ${data.winner_id}`);
+            }
+            
+            // Show toast notification
+            this.toastManager.showSuccess(`${data.winner_name || `Player ${data.winner_id}`} wins the game!`);
+        });
+        
+        // Handle tile attack events with capital health updates
+        this.websocketClient.on('tile_attack', (data) => {
+            console.log('Tile attack event:', data);
+            
+            // If a capital city was attacked, update capital health display
+            if (data.payload && data.payload.target_tile_id) {
+                const tileId = data.payload.target_tile_id;
+                
+                // Find the tile to check if it's a capital
+                if (this.gameState && this.gameState.tiles) {
+                    const tile = Array.from(this.gameState.tiles.values()).find(t => t.id === tileId);
+                    
+                    if (tile && tile.type === 'capital_city' && tile.owner && this.uiManager) {
+                        // Update capital health display
+                        this.uiManager.updateCapitalHealth(tile.owner, data.payload.tile_hp, data.payload.tile_max_hp);
+                    }
+                }
+            }
+        });
+        
+        // Handle game state updates to sync capital health
+        this.websocketClient.on('state', (payload) => {
+            console.log('Received game state update:', payload);
+            
+            // Sync capital health displays if players data is available
+            if (payload.players && this.uiManager) {
+                payload.players.forEach(player => {
+                    if (player.capital_hp !== undefined) {
+                        this.uiManager.updateCapitalHealth(player.id, player.capital_hp, 1000);
+                    }
+                });
+            }
+        });
     }
     
     handleGameStateUpdate(gameState) {

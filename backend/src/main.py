@@ -870,7 +870,7 @@ async def handle_attack_tile(room: Room, player_id: str, data: dict, websocket: 
         target_tile.hp = max(0, target_tile.hp - damage)
         tile_destroyed = target_tile.hp == 0
         
-        # If this is a capital city, update player's capital HP
+        # If this is a capital city, update player's capital HP BEFORE setting owner to None
         if target_tile.type == TileType.CAPITAL_CITY and target_tile.owner is not None:
             # Find the player who owns this capital
             target_player = None
@@ -886,6 +886,10 @@ async def handle_attack_tile(room: Room, player_id: str, data: dict, websocket: 
                 
                 # Ensure capital HP doesn't go below 0
                 target_player.capital_hp = max(0, target_player.capital_hp)
+        
+        # If tile is destroyed, make it neutral (no owner)
+        if tile_destroyed:
+            target_tile.owner = None
         
         # Update game state
         import time
@@ -1184,6 +1188,19 @@ async def handle_move_unit(room: Room, player_id: str, data: dict, websocket: We
                for other_unit in room.state.units if other_unit.status != UnitStatus.DEAD):
             await send_error_response(websocket, "Target position is occupied by another unit", "POSITION_OCCUPIED")
             return
+
+        # Check tile ownership - units can only move to neutral tiles or tiles owned by their player
+        target_tile = None
+        for tile in room.state.tiles:
+            if tile.x == target_x and tile.y == target_y:
+                target_tile = tile
+                break
+        
+        if target_tile:
+            # Cannot move to tiles owned by other players
+            if target_tile.owner is not None and target_tile.owner != player.id:
+                await send_error_response(websocket, "Cannot move to tile owned by another player", "TILE_OWNED_BY_OTHER")
+                return
 
         # Calculate movement distance and validate range
         distance = abs(unit.position.x - target_x) + abs(unit.position.y - target_y)

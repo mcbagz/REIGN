@@ -340,19 +340,23 @@ class UnitSystem {
         // Update health bar
         this.updateHealthBar(unitData.id, unitData.hp, maxHp);
         
-        // Handle death
-        if (unitData.hp <= 0 && !this.deadUnits.has(unitData.id)) {
+        // Handle death - only trigger if not already dead and not already animating death
+        if (unitData.hp <= 0 && 
+            !this.deadUnits.has(unitData.id) && 
+            !this.animations.has(unitData.id)) {
             this.startDeathAnimation(unitData.id);
         }
         
-        // Update position if needed
-        const currentPos = {
-            x: Math.round(unitContainer.x / GameConfig.TILE_SIZE),
-            y: Math.round(unitContainer.y / GameConfig.TILE_SIZE)
-        };
-        
-        if (currentPos.x !== unitData.position.x || currentPos.y !== unitData.position.y) {
-            this.moveUnit(unitData.id, unitData.position);
+        // Update position if needed (only for living units)
+        if (unitData.hp > 0) {
+            const currentPos = {
+                x: Math.round(unitContainer.x / GameConfig.TILE_SIZE),
+                y: Math.round(unitContainer.y / GameConfig.TILE_SIZE)
+            };
+            
+            if (currentPos.x !== unitData.position.x || currentPos.y !== unitData.position.y) {
+                this.moveUnit(unitData.id, unitData.position);
+            }
         }
         
         console.log(`Updated unit ${unitData.id}: HP ${unitData.hp}/${maxHp}`);
@@ -361,6 +365,12 @@ class UnitSystem {
     startDeathAnimation(unitId) {
         const unitContainer = this.unitSprites.get(unitId);
         if (!unitContainer) return;
+        
+        // Additional safety check - prevent multiple death animations
+        if (this.deadUnits.has(unitId) || this.animations.has(unitId)) {
+            console.log(`Death animation already in progress for unit ${unitId}`);
+            return;
+        }
         
         this.deadUnits.add(unitId);
         

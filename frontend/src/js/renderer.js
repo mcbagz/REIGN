@@ -347,6 +347,19 @@ class GameRenderer {
             tileContainer.removeChild(existingTile);
         }
         
+        // Remove existing ownership glow
+        const existingGlow = tileContainer.getChildByName('ownership-glow');
+        if (existingGlow) {
+            tileContainer.removeChild(existingGlow);
+        }
+        
+        // Add ownership glow if tile is owned by a player
+        if (tileData.owner !== null && tileData.owner !== undefined) {
+            const ownershipGlow = this.createOwnershipGlow(tileData.owner);
+            ownershipGlow.name = 'ownership-glow';
+            tileContainer.addChild(ownershipGlow);
+        }
+        
         // Create tile sprite if texture is available
         const texture = this.sprites[tileData.type];
         if (texture) {
@@ -870,5 +883,36 @@ class GameRenderer {
         }
         
         return this.conquestContainer;
+    }
+
+    createOwnershipGlow(playerId) {
+        const ownershipGlow = new PIXI.Graphics();
+        
+        // Get player color
+        const playerColors = {
+            1: 0x00ff00, // Player 1 - green
+            2: 0xff0000, // Player 2 - red  
+            3: 0x0066ff, // Player 3 - blue
+            4: 0xffff00  // Player 4 - yellow
+        };
+        
+        const glowColor = playerColors[playerId] || 0xffffff;
+        
+        // Create glow effect on the inner edges of the tile
+        const glowWidth = 3;
+        const alpha = 0.6;
+        
+        ownershipGlow.lineStyle(glowWidth, glowColor, alpha);
+        
+        // Draw glow on the inner edges of the tile (inside the grid square)
+        const offset = glowWidth / 2;
+        ownershipGlow.drawRect(
+            offset, 
+            offset, 
+            GameConfig.TILE_SIZE - glowWidth, 
+            GameConfig.TILE_SIZE - glowWidth
+        );
+        
+        return ownershipGlow;
     }
 } 

@@ -49,8 +49,14 @@ class UIManager {
         // Set up worker management
         this.setupWorkerManagement();
         
+        // Set up player status panel for capital health
+        this.setupPlayerStatusPanel();
+        
+        // Set up game status panel for elimination/victory messages
+        this.setupGameStatusPanel();
+        
         this.initialized = true;
-        console.log('UI Manager initialized');
+        console.log('UI Manager initialized successfully');
     }
     
     setupModalListeners() {
@@ -293,6 +299,198 @@ class UIManager {
         document.addEventListener('workerCooldownFinished', this.handleWorkerCooldownFinished);
         
         console.log('Worker management UI initialized');
+    }
+    
+    setupPlayerStatusPanel() {
+        if (!this.renderer || !this.renderer.app) {
+            console.error('Renderer not available for player status panel setup');
+            return;
+        }
+        
+        // Create player status container
+        this.playerStatusContainer = new PIXI.Container();
+        this.playerStatusContainer.x = this.renderer.app.screen.width - 220;
+        this.playerStatusContainer.y = 10;
+        this.playerStatusContainer.zIndex = 1000;
+        
+        // Create capital health indicators
+        this.capitalHealthTexts = new Map();
+        
+        // Add container to stage
+        this.renderer.app.stage.addChild(this.playerStatusContainer);
+        
+        console.log('Player status panel initialized');
+    }
+    
+    setupGameStatusPanel() {
+        if (!this.renderer || !this.renderer.app) {
+            console.error('Renderer not available for game status panel setup');
+            return;
+        }
+        
+        // Create game status container for elimination/victory messages
+        this.gameStatusContainer = new PIXI.Container();
+        this.gameStatusContainer.x = this.renderer.app.screen.width / 2;
+        this.gameStatusContainer.y = this.renderer.app.screen.height / 2;
+        this.gameStatusContainer.zIndex = 2000;
+        
+        // Add container to stage
+        this.renderer.app.stage.addChild(this.gameStatusContainer);
+        
+        console.log('Game status panel initialized');
+    }
+    
+    updateCapitalHealth(playerId, currentHp, maxHp = 1000) {
+        if (!this.playerStatusContainer) return;
+        
+        const playerColors = {
+            1: '#00ff00', // Player 1 - green
+            2: '#ff0000', // Player 2 - red  
+            3: '#0066ff', // Player 3 - blue
+            4: '#ffff00'  // Player 4 - yellow
+        };
+        
+        let healthText = this.capitalHealthTexts.get(playerId);
+        
+        if (!healthText) {
+            // Create new health indicator
+            const textStyle = new PIXI.TextStyle({
+                fontFamily: 'Arial',
+                fontSize: 14,
+                fill: playerColors[playerId] || '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 2,
+                dropShadow: true,
+                dropShadowDistance: 2,
+                dropShadowColor: '#000000',
+                dropShadowAlpha: 0.7
+            });
+            
+            healthText = new PIXI.Text(`Player ${playerId}: ${currentHp}/${maxHp} HP`, textStyle);
+            healthText.y = (playerId - 1) * 25;
+            
+            this.capitalHealthTexts.set(playerId, healthText);
+            this.playerStatusContainer.addChild(healthText);
+        } else {
+            // Update existing health indicator
+            healthText.text = `Player ${playerId}: ${currentHp}/${maxHp} HP`;
+            
+            // Change color based on health percentage
+            const healthPercent = currentHp / maxHp;
+            if (healthPercent <= 0) {
+                healthText.style.fill = '#666666'; // Gray for eliminated
+                healthText.text = `Player ${playerId}: ELIMINATED`;
+            } else if (healthPercent < 0.3) {
+                healthText.style.fill = '#ff0000'; // Red for low health
+            } else if (healthPercent < 0.6) {
+                healthText.style.fill = '#ffff00'; // Yellow for medium health
+            } else {
+                healthText.style.fill = playerColors[playerId] || '#ffffff'; // Original color for good health
+            }
+        }
+    }
+    
+    showEliminationMessage(playerId, playerName) {
+        if (!this.gameStatusContainer) return;
+        
+        // Create elimination message
+        const eliminationStyle = new PIXI.TextStyle({
+            fontFamily: 'Arial',
+            fontSize: 32,
+            fill: '#ff0000',
+            stroke: '#000000',
+            strokeThickness: 4,
+            dropShadow: true,
+            dropShadowDistance: 4,
+            dropShadowColor: '#000000',
+            dropShadowAlpha: 0.8,
+            align: 'center'
+        });
+        
+        const message = new PIXI.Text(`${playerName} ELIMINATED!`, eliminationStyle);
+        message.anchor.set(0.5, 0.5);
+        message.alpha = 0;
+        
+        this.gameStatusContainer.addChild(message);
+        
+        // Animate the message
+        const fadeIn = () => {
+            message.alpha += 0.05;
+            if (message.alpha < 1) {
+                requestAnimationFrame(fadeIn);
+            } else {
+                // Start fade out after 3 seconds
+                setTimeout(() => {
+                    const fadeOut = () => {
+                        message.alpha -= 0.02;
+                        if (message.alpha > 0) {
+                            requestAnimationFrame(fadeOut);
+                        } else {
+                            this.gameStatusContainer.removeChild(message);
+                        }
+                    };
+                    fadeOut();
+                }, 3000);
+            }
+        };
+        fadeIn();
+        
+        console.log(`Elimination message shown for ${playerName}`);
+    }
+    
+    showVictoryMessage(winnerId, winnerName) {
+        if (!this.gameStatusContainer) return;
+        
+        // Create victory message
+        const victoryStyle = new PIXI.TextStyle({
+            fontFamily: 'Arial',
+            fontSize: 48,
+            fill: '#00ff00',
+            stroke: '#000000',
+            strokeThickness: 6,
+            dropShadow: true,
+            dropShadowDistance: 6,
+            dropShadowColor: '#000000',
+            dropShadowAlpha: 0.8,
+            align: 'center'
+        });
+        
+        const message = new PIXI.Text(`${winnerName} WINS!`, victoryStyle);
+        message.anchor.set(0.5, 0.5);
+        message.alpha = 0;
+        
+        this.gameStatusContainer.addChild(message);
+        
+        // Animate the message with pulsing effect
+        let scale = 1;
+        let scaleDirection = 1;
+        
+        const animate = () => {
+            message.alpha += 0.03;
+            scale += 0.01 * scaleDirection;
+            
+            if (scale > 1.1) scaleDirection = -1;
+            if (scale < 0.9) scaleDirection = 1;
+            
+            message.scale.set(scale, scale);
+            
+            if (message.alpha < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                // Continue pulsing
+                const pulse = () => {
+                    scale += 0.01 * scaleDirection;
+                    if (scale > 1.1) scaleDirection = -1;
+                    if (scale < 0.9) scaleDirection = 1;
+                    message.scale.set(scale, scale);
+                    requestAnimationFrame(pulse);
+                };
+                pulse();
+            }
+        };
+        animate();
+        
+        console.log(`Victory message shown for ${winnerName}`);
     }
     
     getWorkerJobName(tileType) {

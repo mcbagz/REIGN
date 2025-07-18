@@ -828,6 +828,7 @@ class Room:
         target_tile_id = combat_event['target_id']
         damage = combat_event['damage']
         attacker_id = combat_event['attacker_id']
+        tile_destroyed = combat_event.get('target_died', False)
         
         # Find the target tile
         target_tile = None
@@ -839,7 +840,7 @@ class Room:
         if not target_tile:
             return
         
-        # If this is a capital city, update player's capital HP
+        # If this is a capital city, update player's capital HP BEFORE setting owner to None
         if target_tile.type == TileType.CAPITAL_CITY and target_tile.owner is not None:
             # Find the player who owns this capital
             target_player = None
@@ -856,6 +857,10 @@ class Room:
                 # Ensure capital HP doesn't go below 0
                 target_player.capital_hp = max(0, target_player.capital_hp)
         
+        # If tile is destroyed, make it neutral (no owner)
+        if tile_destroyed:
+            target_tile.owner = None
+        
         # Broadcast tile attack event to all players
         await self._broadcast_message({
             "type": "tile_attack",
@@ -865,7 +870,7 @@ class Room:
                 "damage": damage,
                 "tile_hp": target_tile.hp,
                 "tile_max_hp": target_tile.max_hp,
-                "tile_destroyed": target_tile.hp <= 0,
+                "tile_destroyed": tile_destroyed,
                 "attacker_position": combat_event['position'],
                 "target_position": {"x": target_tile.x, "y": target_tile.y},
                 "timestamp": combat_event['timestamp']
